@@ -43,6 +43,41 @@ class Koopo_Stories_REST {
     public static function get_feed( WP_REST_Request $req ) {
         $user_id = get_current_user_id();
 
+// Capability: must be able to upload media
+if ( ! current_user_can('upload_files') ) {
+    return new WP_REST_Response([ 'error' => 'forbidden', 'message' => 'upload_not_allowed' ], 403);
+}
+
+// Enforce per-day upload limit (0 = unlimited)
+$max_per_day = (int) get_option('koopo_stories_max_uploads_per_day', 20);
+if ( $max_per_day > 0 ) {
+    $today_start = strtotime('today', current_time('timestamp'));
+    $ids_today = get_posts([
+        'post_type' => Koopo_Stories_Module::CPT_ITEM,
+        'post_status' => 'any',
+        'author' => $user_id,
+        'fields' => 'ids',
+        'posts_per_page' => -1,
+        'date_query' => [
+            [
+                'after' => date('Y-m-d H:i:s', $today_start),
+                'inclusive' => true,
+            ],
+        ],
+    ]); 
+                if ( is_array($ids_today) && count($ids_today) >= $max_per_day ) {
+        return new WP_REST_Response([ 'error' => 'limit_reached', 'message' => 'daily_upload_limit' ], 429);
+    }
+}
+
+$duration_hours = (int) get_option('koopo_stories_duration_hours', 24);
+if ( $duration_hours < 1 ) $duration_hours = 24;
+$expires_at_new = time() + ( $duration_hours * HOUR_IN_SECONDS );
+
+$max_items_per_story = (int) get_option('koopo_stories_max_items_per_story', 20);
+if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
+
+
         $limit = max(1, min(50, intval($req->get_param('limit'))));
         $scope = $req->get_param('scope');
         $scope = in_array($scope, ['friends','following','all'], true) ? $scope : 'friends';
@@ -182,6 +217,41 @@ class Koopo_Stories_REST {
 
     public static function get_story( WP_REST_Request $req ) {
         $user_id = get_current_user_id();
+
+// Capability: must be able to upload media
+if ( ! current_user_can('upload_files') ) {
+    return new WP_REST_Response([ 'error' => 'forbidden', 'message' => 'upload_not_allowed' ], 403);
+}
+
+// Enforce per-day upload limit (0 = unlimited)
+$max_per_day = (int) get_option('koopo_stories_max_uploads_per_day', 20);
+if ( $max_per_day > 0 ) {
+    $today_start = strtotime('today', current_time('timestamp'));
+    $ids_today = get_posts([
+        'post_type' => Koopo_Stories_Module::CPT_ITEM,
+        'post_status' => 'any',
+        'author' => $user_id,
+        'fields' => 'ids',
+        'posts_per_page' => -1,
+        'date_query' => [
+            [
+                'after' => date('Y-m-d H:i:s', $today_start),
+                'inclusive' => true,
+            ],
+        ],
+    ]); 
+                if ( is_array($ids_today) && count($ids_today) >= $max_per_day ) {
+        return new WP_REST_Response([ 'error' => 'limit_reached', 'message' => 'daily_upload_limit' ], 429);
+    }
+}
+
+$duration_hours = (int) get_option('koopo_stories_duration_hours', 24);
+if ( $duration_hours < 1 ) $duration_hours = 24;
+$expires_at_new = time() + ( $duration_hours * HOUR_IN_SECONDS );
+
+$max_items_per_story = (int) get_option('koopo_stories_max_items_per_story', 20);
+if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
+
         $story_id = (int) $req['id'];
 
         $story = get_post($story_id);
@@ -246,6 +316,41 @@ class Koopo_Stories_REST {
 
     public static function mark_seen( WP_REST_Request $req ) {
         $user_id = get_current_user_id();
+
+// Capability: must be able to upload media
+if ( ! current_user_can('upload_files') ) {
+    return new WP_REST_Response([ 'error' => 'forbidden', 'message' => 'upload_not_allowed' ], 403);
+}
+
+// Enforce per-day upload limit (0 = unlimited)
+$max_per_day = (int) get_option('koopo_stories_max_uploads_per_day', 20);
+if ( $max_per_day > 0 ) {
+    $today_start = strtotime('today', current_time('timestamp'));
+    $ids_today = get_posts([
+        'post_type' => Koopo_Stories_Module::CPT_ITEM,
+        'post_status' => 'any',
+        'author' => $user_id,
+        'fields' => 'ids',
+        'posts_per_page' => -1,
+        'date_query' => [
+            [
+                'after' => date('Y-m-d H:i:s', $today_start),
+                'inclusive' => true,
+            ],
+        ],
+    ]); 
+                if ( is_array($ids_today) && count($ids_today) >= $max_per_day ) {
+        return new WP_REST_Response([ 'error' => 'limit_reached', 'message' => 'daily_upload_limit' ], 429);
+    }
+}
+
+$duration_hours = (int) get_option('koopo_stories_duration_hours', 24);
+if ( $duration_hours < 1 ) $duration_hours = 24;
+$expires_at_new = time() + ( $duration_hours * HOUR_IN_SECONDS );
+
+$max_items_per_story = (int) get_option('koopo_stories_max_items_per_story', 20);
+if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
+
         $item_id = (int) $req['id'];
 
         $item = get_post($item_id);
@@ -265,6 +370,41 @@ class Koopo_Stories_REST {
         // MVP: accept multipart upload "file"
         $user_id = get_current_user_id();
 
+// Capability: must be able to upload media
+if ( ! current_user_can('upload_files') ) {
+    return new WP_REST_Response([ 'error' => 'forbidden', 'message' => 'upload_not_allowed' ], 403);
+}
+
+// Enforce per-day upload limit (0 = unlimited)
+$max_per_day = (int) get_option('koopo_stories_max_uploads_per_day', 20);
+if ( $max_per_day > 0 ) {
+    $today_start = strtotime('today', current_time('timestamp'));
+    $ids_today = get_posts([
+        'post_type' => Koopo_Stories_Module::CPT_ITEM,
+        'post_status' => 'any',
+        'author' => $user_id,
+        'fields' => 'ids',
+        'posts_per_page' => -1,
+        'date_query' => [
+            [
+                'after' => date('Y-m-d H:i:s', $today_start),
+                'inclusive' => true,
+            ],
+        ],
+    ]); 
+                if ( is_array($ids_today) && count($ids_today) >= $max_per_day ) {
+        return new WP_REST_Response([ 'error' => 'limit_reached', 'message' => 'daily_upload_limit' ], 429);
+    }
+}
+
+$duration_hours = (int) get_option('koopo_stories_duration_hours', 24);
+if ( $duration_hours < 1 ) $duration_hours = 24;
+$expires_at_new = time() + ( $duration_hours * HOUR_IN_SECONDS );
+
+$max_items_per_story = (int) get_option('koopo_stories_max_items_per_story', 20);
+if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
+
+
         if ( empty($_FILES['file']) || ! is_array($_FILES['file']) ) {
             return new WP_REST_Response([ 'error' => 'missing_file' ], 400);
         }
@@ -283,7 +423,7 @@ class Koopo_Stories_REST {
         $mime = get_post_mime_type($attachment_id);
         $media_type = (is_string($mime) && strpos($mime, 'video/') === 0) ? 'video' : 'image';
 
-        // Find existing active story for this user (within 24h)
+                // Find existing active story for this user (within configured duration)
         $existing = get_posts([
             'post_type' => Koopo_Stories_Module::CPT_STORY,
             'post_status' => 'publish',
@@ -292,23 +432,59 @@ class Koopo_Stories_REST {
             'orderby' => 'date',
             'order' => 'DESC',
             'meta_query' => [
-            'relation' => 'OR',
-            [
-                'key' => 'expires_at',
-                'value' => time(),
-                'compare' => '>',
-                'type' => 'NUMERIC',
+                'relation' => 'OR',
+                [
+                    'key' => 'expires_at',
+                    'value' => time(),
+                    'compare' => '>',
+                    'type' => 'NUMERIC',
+                ],
+                [
+                    'key' => 'expires_at',
+                    'compare' => 'NOT EXISTS',
+                ],
             ],
-            [
-                'key' => 'expires_at',
-                'compare' => 'NOT EXISTS',
-            ],
-        ],
         ]);
+
+        $story_id = 0;
 
         if ( ! empty($existing) ) {
             $story_id = (int) $existing[0]->ID;
-        } else {
+
+            // If story has no expiry meta (legacy), set it now.
+            $ex = (int) get_post_meta($story_id, 'expires_at', true);
+            if ( $ex <= 0 ) {
+                update_post_meta($story_id, 'expires_at', $expires_at_new);
+            }
+
+            // If privacy is missing (legacy), default to friends.
+            $pv = get_post_meta($story_id, 'privacy', true);
+            if ( ! $pv ) {
+                update_post_meta($story_id, 'privacy', 'friends');
+            }
+
+            // Enforce max items per story: if reached, start a new story instead.
+            if ( $max_items_per_story > 0 ) {
+                $item_ids = get_posts([
+                    'post_type' => Koopo_Stories_Module::CPT_ITEM,
+                    'post_status' => 'any',
+                    'fields' => 'ids',
+                    'posts_per_page' => -1,
+                    'meta_query' => [
+                        [
+                            'key' => 'story_id',
+                            'value' => $story_id,
+                            'compare' => '=',
+                        ],
+                    ],
+                ]);
+                if ( is_array($item_ids) && count($item_ids) >= $max_items_per_story ) {
+                    $story_id = 0;
+                }
+            }
+        }
+
+        if ( ! $story_id ) {
             $story_id = wp_insert_post([
                 'post_type' => Koopo_Stories_Module::CPT_STORY,
                 'post_status' => 'publish',
@@ -323,7 +499,7 @@ class Koopo_Stories_REST {
             $privacy = $req->get_param('privacy');
             $privacy = ($privacy === 'public') ? 'public' : 'friends';
             update_post_meta($story_id, 'privacy', $privacy);
-            update_post_meta($story_id, 'expires_at', time() + DAY_IN_SECONDS);
+            update_post_meta($story_id, 'expires_at', $expires_at_new);
         }
 
         // Create story item
