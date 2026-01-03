@@ -25,7 +25,7 @@ final class Koopo_Stories_Module {
     private function __construct(){}
 
     public function init() : void {
-        $enabled = (get_option(self::OPTION_ENABLE, '0') === '1');
+        $enabled = (get_option(self::OPTION_ENABLE, '1') === '1');
         require_once KOOPO_PATH . 'includes/stories/class-stories-cpt.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-views-table.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-permissions.php';
@@ -58,7 +58,7 @@ final class Koopo_Stories_Module {
 
         // BuddyBoss activity tray (only when enabled)
         if ( $enabled ) {
-            add_action('bp_before_activity_loop', [ $this, 'render_activity_tray' ]);
+            add_action('bp_after_activity_post_form', [ $this, 'render_activity_tray' ]);
         }
 
         // Widget + shortcode
@@ -99,10 +99,12 @@ final class Koopo_Stories_Module {
         wp_enqueue_style('koopo-stories');
         wp_enqueue_script('koopo-stories');
 
+        $current_user_id = get_current_user_id();
         wp_localize_script('koopo-stories', 'KoopoStories', [
             'restUrl' => esc_url_raw( rest_url( self::REST_NS . '/stories' ) ),
             'nonce'   => wp_create_nonce('wp_rest'),
-            'me'      => get_current_user_id(),
+            'me'      => $current_user_id,
+            'meAvatar' => get_avatar_url($current_user_id, [ 'size' => 96 ]),
         ]);
     }
 
@@ -114,7 +116,7 @@ final class Koopo_Stories_Module {
 
     public function shortcode_widget( $atts = [] ) : string {
         if ( ! is_user_logged_in() ) return '';
-        if ( get_option(self::OPTION_ENABLE, '0') !== '1' ) return '';
+        if ( get_option(self::OPTION_ENABLE, '1') !== '1' ) return '';
 
         $atts = shortcode_atts([
             'title' => '',

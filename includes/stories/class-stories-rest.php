@@ -182,12 +182,17 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             }
 
             $author_id = (int) $story->post_author;
+            $profile_url = '';
+            if ( function_exists('bp_core_get_user_domain') ) {
+                $profile_url = bp_core_get_user_domain($author_id);
+            }
             $out[] = [
                 'story_id' => $sid,
                 'author' => [
                     'id' => $author_id,
                     'name' => get_the_author_meta('display_name', $author_id),
                     'avatar' => get_avatar_url($author_id, [ 'size' => 96 ]),
+                    'profile_url' => $profile_url,
                 ],
                 'cover_thumb' => $cover_thumb,
                 'last_updated' => get_post_modified_time(DATE_ATOM, true, $sid),
@@ -303,12 +308,17 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             ];
         }
 
+        $profile_url = '';
+        if ( function_exists('bp_core_get_user_domain') ) {
+            $profile_url = bp_core_get_user_domain($author_id);
+        }
         return new WP_REST_Response([
             'story_id' => $story_id,
             'author' => [
                 'id' => $author_id,
                 'name' => $author ? $author->display_name : ('User #' . $author_id),
                 'avatar' => get_avatar_url($author_id, [ 'size' => 96 ]),
+                'profile_url' => $profile_url,
             ],
             'items' => $items_out,
         ], 200);

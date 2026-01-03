@@ -10,6 +10,14 @@
 
 define( 'KOOPO_PATH', plugin_dir_path( __FILE__ ) );
 
+// Ensure Stories are enabled by default on fresh installs (can be disabled in Stories Settings).
+register_activation_hook(__FILE__, function () {
+    if ( get_option('koopo_enable_stories', null) === null ) {
+        add_option('koopo_enable_stories', '1');
+    }
+});
+
+
 add_action( 'plugins_loaded', 'kb_load_textdomain' );
 
 /*
@@ -274,4 +282,3 @@ function enqueu_koopo_styles(){
 	}
 
 }
-

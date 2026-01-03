@@ -43,7 +43,7 @@
 
   // Viewer singleton
   const Viewer = (() => {
-    let root, barsWrap, headerAvatar, headerName, closeBtn, stage, tapPrev, tapNext;
+    let root, barsWrap, headerAvatar, headerName, closeBtn, stage, tapPrev, tapNext, headerAvatarLink;
     let story = null;
     let storyIndex = 0;
     let itemIndex = 0;
@@ -56,10 +56,11 @@
       if (root) return;
       barsWrap = el('div', { class: 'koopo-stories__progress' });
       headerAvatar = el('img', { src: '' });
+      headerAvatarLink = el('a', { href: '#', class: 'koopo-stories__avatar-link' }, [headerAvatar]);
       headerName = el('div', { class: 'koopo-stories__who', html: '' });
       closeBtn = el('button', { class: 'koopo-stories__close', type: 'button' }, []);
       closeBtn.textContent = '×';
-      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatar, headerName, closeBtn]);
+      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatarLink, headerName, closeBtn]);
 
       stage = el('div', { class: 'koopo-stories__stage' });
       tapPrev = el('div', { class: 'koopo-stories__tap koopo-stories__tap--prev' });
@@ -98,6 +99,20 @@
 
       headerAvatar.src = story.author?.avatar || '';
       headerName.textContent = story.author?.name || '';
+
+      // Set profile URL and make clickable
+      const profileUrl = story.author?.profile_url || '';
+      if (profileUrl) {
+        headerAvatarLink.href = profileUrl;
+        headerAvatarLink.target = '_blank';
+        headerAvatarLink.style.cursor = 'pointer';
+      } else {
+        headerAvatarLink.href = '#';
+        headerAvatarLink.removeAttribute('target');
+        headerAvatarLink.style.cursor = 'default';
+        headerAvatarLink.onclick = (e) => e.preventDefault();
+      }
+
       buildBars(story.items?.length || 0);
 
       root.classList.add('is-open');
@@ -232,7 +247,7 @@
     if (showUploader) {
       const meBubble = bubble({
       story_id: 0,
-      author: { id: window.KoopoStories.me, name: 'Your Story', avatar: '' },
+      author: { id: window.KoopoStories.me, name: 'Your Story', avatar: window.KoopoStories.meAvatar || '' },
       cover_thumb: '',
       has_unseen: false,
       items_count: 0,

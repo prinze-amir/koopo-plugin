@@ -41,7 +41,7 @@ final class Koopo_Stories_Admin {
         register_setting(self::SETTINGS_GROUP, Koopo_Stories_Module::OPTION_ENABLE, [
             'type' => 'string',
             'sanitize_callback' => function($v){ return ($v === '1') ? '1' : '0'; },
-            'default' => '0',
+            'default' => '1',
         ]);
 
         register_setting(self::SETTINGS_GROUP, 'koopo_stories_default_privacy', [
