@@ -28,6 +28,10 @@ final class Koopo_Stories_Module {
         $enabled = (get_option(self::OPTION_ENABLE, '1') === '1');
         require_once KOOPO_PATH . 'includes/stories/class-stories-cpt.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-views-table.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-close-friends.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-close-friends-ui.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-reactions.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-replies.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-permissions.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-rest.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-cleanup.php';
@@ -50,6 +54,15 @@ final class Koopo_Stories_Module {
         // Views table installer
         register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Views_Table', 'install' ] );
 
+        // Close friends table installer
+        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Close_Friends', 'install' ] );
+
+        // Reactions table installer
+        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Reactions', 'install' ] );
+
+        // Replies table installer
+        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Replies', 'install' ] );
+
         // Cron cleanup (only when enabled)
         if ( $enabled ) {
             add_action('koopo_stories_cleanup', [ 'Koopo_Stories_Cleanup', 'run' ]);
@@ -64,6 +77,9 @@ final class Koopo_Stories_Module {
         // Widget + shortcode
         add_action('widgets_init', [ 'Koopo_Stories_Widget', 'register' ]);
         add_shortcode('koopo_stories_widget', [ $this, 'shortcode_widget' ]);
+
+        // Close Friends UI
+        Koopo_Stories_Close_Friends_UI::init();
 
         // Assets registration
         add_action('wp_enqueue_scripts', [ $this, 'register_assets' ]);

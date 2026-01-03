@@ -59,4 +59,128 @@ class Koopo_Stories_Views_Table {
         foreach ($rows as $id) $out[intval($id)] = true;
         return $out;
     }
+
+    /**
+     * Get total view count for a story item
+     */
+    public static function get_view_count( int $item_id ) : int {
+        global $wpdb;
+        $table = self::table_name();
+
+        $count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT viewer_user_id) FROM {$table} WHERE story_item_id = %d",
+            $item_id
+        ));
+
+        return $count;
+    }
+
+    /**
+     * Get total view count for all items in a story
+     */
+    public static function get_story_view_count( array $item_ids ) : int {
+        if ( empty($item_ids) ) return 0;
+
+        global $wpdb;
+        $table = self::table_name();
+        $item_ids = array_values(array_filter(array_map('intval', $item_ids)));
+        $placeholders = implode(',', array_fill(0, count($item_ids), '%d'));
+
+        $count = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(DISTINCT viewer_user_id) FROM {$table} WHERE story_item_id IN ({$placeholders})",
+            $item_ids
+        ));
+
+        return $count;
+    }
+
+    /**
+     * Get list of viewers for a story item
+     */
+    public static function get_viewers( int $item_id, int $limit = 100 ) : array {
+        global $wpdb;
+        $table = self::table_name();
+
+        $results = $wpdb->get_results( $wpdb->prepare(
+            "SELECT viewer_user_id, viewed_at FROM {$table} WHERE story_item_id = %d ORDER BY viewed_at DESC LIMIT %d",
+            $item_id,
+            $limit
+        ), ARRAY_A);
+
+        return is_array($results) ? $results : [];
+    }
+
+    /**
+     * Get list of all viewers for a story (across all items)
+     */
+    public static function get_story_viewers( array $item_ids, int $limit = 100 ) : array {
+        if ( empty($item_ids) ) return [];
+
+        global $wpdb;
+        $table = self::table_name();
+        $item_ids = array_values(array_filter(array_map('intval', $item_ids)));
+        $placeholders = implode(',', array_fill(0, count($item_ids), '%d'));
+
+        $results = $wpdb->get_results( $wpdb->prepare(
+            "SELECT viewer_user_id, MAX(viewed_at) as last_viewed_at
+             FROM {$table}
+             WHERE story_item_id IN ({$placeholders})
+             GROUP BY viewer_user_id
+             ORDER BY last_viewed_at DESC
+             LIMIT %d",
+            array_merge($item_ids, [$limit])
+        ), ARRAY_A);
+
+        return is_array($results) ? $results : [];
+    }
+
+    /**
+     * Get view analytics for a story
+     */
+    public static function get_story_analytics( array $item_ids ) : array {
+        if ( empty($item_ids) ) {
+            return [
+                'total_views' => 0,
+                'unique_viewers' => 0,
+                'views_by_item' => [],
+            ];
+        }
+
+        global $wpdb;
+        $table = self::table_name();
+        $item_ids = array_values(array_filter(array_map('intval', $item_ids)));
+        $placeholders = implode(',', array_fill(0, count($item_ids), '%d'));
+
+        // Get total views and unique viewers
+        $stats = $wpdb->get_row( $wpdb->prepare(
+            "SELECT
+                COUNT(*) as total_views,
+                COUNT(DISTINCT viewer_user_id) as unique_viewers
+             FROM {$table}
+             WHERE story_item_id IN ({$placeholders})",
+            $item_ids
+        ), ARRAY_A);
+
+        // Get views per item
+        $views_by_item = $wpdb->get_results( $wpdb->prepare(
+            "SELECT story_item_id, COUNT(DISTINCT viewer_user_id) as view_count
+             FROM {$table}
+             WHERE story_item_id IN ({$placeholders})
+             GROUP BY story_item_id",
+            $item_ids
+        ), ARRAY_A);
+
+        $views_map = [];
+        if ( is_array($views_by_item) ) {
+            foreach ( $views_by_item as $row ) {
+                $views_map[(int)$row['story_item_id']] = (int)$row['view_count'];
+            }
+        }
+
+        return [
+            'total_views' => (int)($stats['total_views'] ?? 0),
+            'unique_viewers' => (int)($stats['unique_viewers'] ?? 0),
+            'views_by_item' => $views_map,
+        ];
+    }
 }

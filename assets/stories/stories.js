@@ -43,7 +43,7 @@
 
   // Viewer singleton
   const Viewer = (() => {
-    let root, barsWrap, headerAvatar, headerName, closeBtn, stage, tapPrev, tapNext, headerAvatarLink;
+    let root, barsWrap, headerAvatar, headerName, closeBtn, stage, tapPrev, tapNext, headerAvatarLink, viewCount;
     let story = null;
     let storyIndex = 0;
     let itemIndex = 0;
@@ -58,9 +58,10 @@
       headerAvatar = el('img', { src: '' });
       headerAvatarLink = el('a', { href: '#', class: 'koopo-stories__avatar-link' }, [headerAvatar]);
       headerName = el('div', { class: 'koopo-stories__who', html: '' });
+      viewCount = el('div', { class: 'koopo-stories__view-count', style: 'font-size:12px;opacity:0.8;margin-left:auto;margin-right:10px;cursor:pointer;', html: '' });
       closeBtn = el('button', { class: 'koopo-stories__close', type: 'button' }, []);
       closeBtn.textContent = '×';
-      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatarLink, headerName, closeBtn]);
+      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatarLink, headerName, viewCount, closeBtn]);
 
       stage = el('div', { class: 'koopo-stories__stage' });
       tapPrev = el('div', { class: 'koopo-stories__tap koopo-stories__tap--prev' });
@@ -111,6 +112,18 @@
         headerAvatarLink.removeAttribute('target');
         headerAvatarLink.style.cursor = 'default';
         headerAvatarLink.onclick = (e) => e.preventDefault();
+      }
+
+      // Display view count if available (only visible to story author)
+      const analytics = story.analytics || {};
+      const views = analytics.view_count || 0;
+      const currentUserId = window.KoopoStories?.me || 0;
+      if (views > 0 && currentUserId === story.author?.id) {
+        viewCount.textContent = `👁 ${views} view${views !== 1 ? 's' : ''}`;
+        viewCount.style.display = 'block';
+        viewCount.onclick = () => showViewerList(story.story_id);
+      } else {
+        viewCount.style.display = 'none';
       }
 
       buildBars(story.items?.length || 0);
@@ -276,6 +289,22 @@
       avatar.appendChild(badge);
     }
 
+    // Privacy indicator for own stories
+    if (isUploader === false && s.author?.id === window.KoopoStories.me && s.privacy) {
+      const privacyIcon = el('div', { class: 'koopo-stories__privacy-icon' });
+      if (s.privacy === 'close_friends') {
+        privacyIcon.innerHTML = '&#128274;'; // lock icon
+        privacyIcon.title = 'Close Friends';
+      } else if (s.privacy === 'friends') {
+        privacyIcon.innerHTML = '&#128100;'; // silhouette icon
+        privacyIcon.title = 'Friends Only';
+      } else if (s.privacy === 'public') {
+        privacyIcon.innerHTML = '&#127758;'; // globe icon
+        privacyIcon.title = 'Public';
+      }
+      avatar.appendChild(privacyIcon);
+    }
+
     b.appendChild(avatar);
     b.appendChild(name);
 
@@ -329,6 +358,27 @@
     }
     preview.appendChild(mediaEl);
 
+    // Privacy selector
+    const privacyWrap = el('div', { class: 'koopo-stories__composer-privacy' });
+    const privacyLabel = el('label', { class: 'koopo-stories__composer-privacy-label' });
+    privacyLabel.textContent = 'Who can see this?';
+    const privacySelect = el('select', { class: 'koopo-stories__composer-privacy-select' });
+
+    const publicOption = el('option', { value: 'public' });
+    publicOption.textContent = 'Public';
+    const friendsOption = el('option', { value: 'friends' });
+    friendsOption.textContent = 'Friends Only';
+    friendsOption.selected = true;
+    const closeFriendsOption = el('option', { value: 'close_friends' });
+    closeFriendsOption.textContent = 'Close Friends';
+
+    privacySelect.appendChild(publicOption);
+    privacySelect.appendChild(friendsOption);
+    privacySelect.appendChild(closeFriendsOption);
+
+    privacyWrap.appendChild(privacyLabel);
+    privacyWrap.appendChild(privacySelect);
+
     const actions = el('div', { class: 'koopo-stories__composer-actions' });
     const cancelBtn = el('button', { class: 'koopo-stories__composer-cancel', type: 'button' });
     cancelBtn.textContent = 'Cancel';
@@ -354,6 +404,7 @@
 
       const fd = new FormData();
       fd.append('file', file);
+      fd.append('privacy', privacySelect.value);
 
       try {
         await apiPost(`${API_BASE}`, fd);
@@ -370,10 +421,92 @@
 
     panel.appendChild(title);
     panel.appendChild(preview);
+    panel.appendChild(privacyWrap);
     panel.appendChild(actions);
     panel.appendChild(status);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+  }
+
+  // Show viewer list modal
+  async function showViewerList(storyId) {
+    const overlay = el('div', { class: 'koopo-stories__composer', style: 'z-index:9999999;' });
+    const panel = el('div', { class: 'koopo-stories__composer-panel', style: 'max-height:80vh;overflow:hidden;' });
+    const title = el('div', { class: 'koopo-stories__composer-title' });
+    title.textContent = 'Viewers';
+
+    const listWrap = el('div', { style: 'max-height:60vh;overflow-y:auto;padding:12px 14px;' });
+    const loading = el('div', { style: 'text-align:center;padding:20px;' });
+    loading.textContent = 'Loading...';
+    listWrap.appendChild(loading);
+
+    const closeBtn = el('button', { class: 'koopo-stories__composer-cancel', style: 'margin:12px 14px;width:calc(100% - 28px);' });
+    closeBtn.textContent = 'Close';
+
+    const close = () => overlay.remove();
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    panel.appendChild(title);
+    panel.appendChild(listWrap);
+    panel.appendChild(closeBtn);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Fetch viewer list
+    try {
+      const resp = await apiGet(`${API_BASE}/${storyId}/viewers`);
+      listWrap.innerHTML = '';
+
+      if (!resp.viewers || resp.viewers.length === 0) {
+        const empty = el('div', { style: 'text-align:center;padding:20px;opacity:0.6;' });
+        empty.textContent = 'No views yet';
+        listWrap.appendChild(empty);
+        return;
+      }
+
+      resp.viewers.forEach(viewer => {
+        const row = el('div', { style: 'display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.1);' });
+
+        const avatar = el('img', {
+          src: viewer.avatar,
+          style: 'width:40px;height:40px;border-radius:999px;'
+        });
+
+        const info = el('div', { style: 'flex:1;' });
+        const name = el('div', { style: 'font-weight:500;font-size:14px;' });
+        name.textContent = viewer.name;
+
+        const time = el('div', { style: 'font-size:12px;opacity:0.7;margin-top:2px;' });
+        const viewDate = new Date(viewer.viewed_at);
+        time.textContent = viewDate.toLocaleString();
+
+        info.appendChild(name);
+        info.appendChild(time);
+
+        row.appendChild(avatar);
+        row.appendChild(info);
+
+        if (viewer.profile_url) {
+          row.style.cursor = 'pointer';
+          row.onclick = () => window.open(viewer.profile_url, '_blank');
+        }
+
+        listWrap.appendChild(row);
+      });
+
+      // Show total count
+      if (resp.total_count > resp.viewers.length) {
+        const more = el('div', { style: 'text-align:center;padding:12px;opacity:0.6;font-size:13px;' });
+        more.textContent = `Showing ${resp.viewers.length} of ${resp.total_count} viewers`;
+        listWrap.appendChild(more);
+      }
+    } catch(e) {
+      listWrap.innerHTML = '';
+      const error = el('div', { style: 'text-align:center;padding:20px;color:#d63638;' });
+      error.textContent = 'Failed to load viewers';
+      listWrap.appendChild(error);
+    }
   }
 
   function init() {

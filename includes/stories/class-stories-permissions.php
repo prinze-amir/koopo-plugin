@@ -7,6 +7,7 @@ class Koopo_Stories_Permissions {
      * Story privacy values:
      * - public: any logged-in user
      * - friends: connections/friends (and optionally follow)
+     * - close_friends: only users in close friends list
      */
     public static function can_view_story( int $story_id, int $viewer_id ) : bool {
         if ( $viewer_id <= 0 ) return false;
@@ -22,7 +23,12 @@ class Koopo_Stories_Permissions {
             return true;
         }
 
-        // friends/connections
+        if ( $privacy === 'close_friends' ) {
+            // Only close friends can view
+            return Koopo_Stories_Close_Friends::is_close_friend($author_id, $viewer_id);
+        }
+
+        // friends/connections (default privacy level)
         $friends = self::friend_ids($viewer_id);
         if ( in_array($author_id, $friends, true) ) {
             return true;

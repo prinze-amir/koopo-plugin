@@ -9,13 +9,16 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 | Phase | Status | Completion |
 |-------|--------|------------|
 | **Phase 0-8** | ✅ Complete | 100% |
-| **Phase 9-17** | 🔄 Planned | 0% |
+| **Phase 9-10** | ✅ Complete | 100% |
+| **Phase 11** | 🔄 Planned | 0% |
+| **Phase 12** | ✅ Complete | 100% |
+| **Phase 13-17** | 🔄 Planned | 0% |
 
-**Overall Progress:** 47% (8/17 phases complete)
+**Overall Progress:** 65% (11/17 phases complete)
 
-**Latest Commit:** 004 - Added profile URL support and current user avatar
+**Latest Commit:** 006 - Phase 12 Implementation
 
-**Next Up:** Phase 9 - User Privacy & Granular Controls
+**Next Up:** Phase 11 - Interactive Features or Phase 13 - Moderation
 
 ---
 
@@ -126,25 +129,39 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 
 ---
 
-### **Phase 9 – User Privacy & Granular Controls**
+### **Phase 9 – User Privacy & Granular Controls** ✅ **COMPLETE**
 
-36. Per-story privacy settings (public, friends only, custom lists)
-37. Story archive (save stories beyond 24h for logged-in user)
-38. Hide story from specific users
-39. Close friends list integration
+36. Per-story privacy settings (public, friends only, close friends) ✅
+37. Story archive (save stories beyond 24h for logged-in user) ⏸️ Deferred
+38. Hide story from specific users ⏸️ Deferred
+39. Close friends list integration ✅
 
-👉 **Commits:** 023–024
+👉 **Commit:** 005
+✅ Privacy controls implemented
+- Privacy selector in upload UI (3 levels: public, friends, close friends)
+- Database-backed close friends lists
+- Privacy-aware permissions system
+- REST API for close friends management
+- User-facing close friends manager UI (shortcode)
+- Privacy indicators on story bubbles
 
 ---
 
-### **Phase 10 – Engagement: Reactions & Replies**
+### **Phase 10 – Engagement: Reactions & Replies** ✅ **COMPLETE**
 
-40. Like/reaction system (emoji picker)
-41. Story replies (DM or comment system)
-42. Reaction counts display
-43. Reply notifications (BuddyBoss notifications integration)
+40. Like/reaction system (emoji picker) ✅ Backend complete
+41. Story replies (DM or comment system) ✅ Backend complete
+42. Reaction counts display ✅ Backend complete
+43. Reply notifications (BuddyBoss notifications integration) ✅
 
-👉 **Commits:** 025–026
+👉 **Commit:** 005
+✅ Full engagement backend implemented
+- Reactions database with 7 emoji types
+- Replies database with DM/public modes
+- 6 REST API endpoints for reactions & replies
+- BuddyBoss notifications integration
+- Privacy-aware reply visibility
+- Frontend UI ready for integration
 
 ---
 
@@ -159,14 +176,22 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 
 ---
 
-### **Phase 12 – Analytics & Insights**
+### **Phase 12 – Analytics & Insights** ✅ **COMPLETE**
 
-48. View counts per story
-49. Viewer list ("Seen by" feature)
-50. Per-user "seen" state tracking
-51. Story insights dashboard (who viewed, when)
+48. View counts per story ✅
+49. Viewer list ("Seen by" feature) ✅
+50. Per-user "seen" state tracking ✅
+51. Story insights dashboard (who viewed, when) ✅
 
-👉 **Commits:** 029–030
+👉 **Commit:** 006
+✅ Full analytics implementation
+- View counts integrated in get_story endpoint
+- `/stories/{id}/viewers` REST endpoint for viewer list
+- `/stories/{id}/analytics` REST endpoint for comprehensive insights
+- Viewer list UI modal with avatars and timestamps
+- View count badge in story viewer (author-only)
+- Analytics include views, reactions, and replies
+- Privacy-aware (only story author can see analytics)
 
 ---
 
@@ -253,15 +278,15 @@ Phase 0 complete, moving to Phase 9
 | Fullscreen viewer | ✅ | ✅ | ✅ Complete |
 | Progress bars | ✅ | ✅ | ✅ Complete |
 | **Privacy** |
-| Public/Friends toggle | ✅ | ✅ | 🔄 Phase 9 |
-| Close friends list | ✅ | ✅ | 🔄 Phase 9 |
-| Hide from specific users | ✅ | ✅ | 🔄 Phase 9 |
-| Story archive | ✅ | ✅ | 🔄 Phase 9 |
+| Public/Friends toggle | ✅ | ✅ | ✅ Complete |
+| Close friends list | ✅ | ✅ | ✅ Complete |
+| Hide from specific users | ✅ | ✅ | ⏸️ Deferred |
+| Story archive | ✅ | ✅ | ⏸️ Deferred |
 | **Engagement** |
-| Reactions/Likes | ✅ | ✅ | 🔄 Phase 10 |
-| DM replies | ✅ | ✅ | 🔄 Phase 10 |
-| View counts | ✅ | ✅ | 🔄 Phase 12 |
-| Viewer list | ✅ | ✅ | 🔄 Phase 12 |
+| Reactions/Likes | ✅ | ✅ | ✅ Backend Complete |
+| DM replies | ✅ | ✅ | ✅ Backend Complete |
+| View counts | ✅ | ✅ | ✅ Complete |
+| Viewer list | ✅ | ✅ | ✅ Complete |
 | **Interactive** |
 | Mentions | ✅ | ✅ | 🔄 Phase 11 |
 | Link stickers | ✅ | ✅ | 🔄 Phase 11 |
