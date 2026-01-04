@@ -10,15 +10,16 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 |-------|--------|------------|
 | **Phase 0-8** | ✅ Complete | 100% |
 | **Phase 9-10** | ✅ Complete | 100% |
-| **Phase 11** | 🔄 Planned | 0% |
+| **Phase 11** | 🔄 In Progress | 50% |
 | **Phase 12** | ✅ Complete | 100% |
-| **Phase 13-17** | 🔄 Planned | 0% |
+| **Phase 13** | ✅ Complete | 100% |
+| **Phase 14-17** | 🔄 Planned | 0% |
 
-**Overall Progress:** 65% (11/17 phases complete)
+**Overall Progress:** 74% (12.5/17 phases complete)
 
-**Latest Commit:** 006 - Phase 12 Implementation
+**Latest Commit:** 008 - Phase 11 Backend (Stickers API)
 
-**Next Up:** Phase 11 - Interactive Features or Phase 13 - Moderation
+**Next Up:** Phase 11 Frontend (Sticker UI) or Phase 14 - Performance
 
 ---
 
@@ -149,30 +150,47 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 
 ### **Phase 10 – Engagement: Reactions & Replies** ✅ **COMPLETE**
 
-40. Like/reaction system (emoji picker) ✅ Backend complete
-41. Story replies (DM or comment system) ✅ Backend complete
-42. Reaction counts display ✅ Backend complete
+40. Like/reaction system (emoji picker) ✅
+41. Story replies (DM or comment system) ✅
+42. Reaction counts display ✅
 43. Reply notifications (BuddyBoss notifications integration) ✅
 
-👉 **Commit:** 005
-✅ Full engagement backend implemented
+👉 **Commits:** 005, 006
+✅ Full engagement implementation (backend + frontend)
 - Reactions database with 7 emoji types
 - Replies database with DM/public modes
 - 6 REST API endpoints for reactions & replies
 - BuddyBoss notifications integration
 - Privacy-aware reply visibility
-- Frontend UI ready for integration
+- **Frontend UI**: Emoji picker modal, reply textarea modal
+- **UX**: Reaction and reply buttons in story viewer
+- Buttons hidden for own stories
 
 ---
 
-### **Phase 11 – Interactive Features**
+### **Phase 11 – Interactive Features** 🔄 **50% COMPLETE**
 
-44. Mentions (@username) with autocomplete
-45. Link sticker (attach URL to story)
-46. Location tag integration (optional)
-47. Poll sticker (vote on story)
+44. ✅ Stickers database with position tracking
+45. ✅ Mention sticker (@username validation)
+46. ✅ Link sticker (URL + title)
+47. ✅ Location sticker (name, coordinates, address)
+48. ✅ Poll sticker (question + up to 4 options)
+49. ✅ Poll voting system with real-time counts
+50. ✅ REST API endpoints for sticker CRUD
+51. 🔄 Sticker UI in story composer (pending)
+52. 🔄 Sticker display in story viewer (pending)
+53. 🔄 @mention autocomplete (pending)
 
-👉 **Commits:** 027–028
+👉 **Commit:** 008 - Phase 11 Backend
+✅ Backend implementation complete
+- `koopo_story_stickers` table
+- `koopo_story_poll_votes` table
+- Support for 4 sticker types: mention, link, location, poll
+- Position tracking (x, y coordinates)
+- Poll voting with duplicate prevention
+- REST endpoints: add, delete, vote
+
+🔄 **Remaining:** Frontend UI for adding/displaying stickers
 
 ---
 
@@ -195,14 +213,25 @@ Here is the **official project roadmap** for the Stories feature, aligned to com
 
 ---
 
-### **Phase 13 – Moderation**
+### **Phase 13 – Moderation** ✅ **COMPLETE**
 
-52. Reporting
-53. Admin review dashboard
-54. Auto-hide thresholds
-55. Flagged content queue
+52. Reporting ✅
+53. Admin review dashboard ✅
+54. Auto-hide thresholds ✅
+55. Flagged content queue ✅
 
-👉 **Commit:** 031
+👉 **Commit:** 007
+✅ Full moderation system implemented
+- Reports database with status tracking
+- User reporting UI with 7 report reasons
+- ⚠ Report button in story viewer
+- REST API for reporting and moderation
+- Admin moderation dashboard with stats
+- Auto-hide stories after threshold (configurable, default: 5)
+- Dismiss or delete reported stories
+- Audit trail with reviewer tracking
+- Can't report own stories
+- One report per user per story
 
 ---
 
@@ -283,8 +312,8 @@ Phase 0 complete, moving to Phase 9
 | Hide from specific users | ✅ | ✅ | ⏸️ Deferred |
 | Story archive | ✅ | ✅ | ⏸️ Deferred |
 | **Engagement** |
-| Reactions/Likes | ✅ | ✅ | ✅ Backend Complete |
-| DM replies | ✅ | ✅ | ✅ Backend Complete |
+| Reactions/Likes | ✅ | ✅ | ✅ Complete |
+| DM replies | ✅ | ✅ | ✅ Complete |
 | View counts | ✅ | ✅ | ✅ Complete |
 | Viewer list | ✅ | ✅ | ✅ Complete |
 | **Interactive** |

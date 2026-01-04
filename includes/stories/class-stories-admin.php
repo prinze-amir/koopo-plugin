@@ -34,6 +34,15 @@ final class Koopo_Stories_Admin {
             self::SETTINGS_SLUG,
             [ __CLASS__, 'render_settings' ]
         );
+
+        add_submenu_page(
+            $parent_slug,
+            __('Moderation Queue', 'koopo'),
+            __('Moderation', 'koopo'),
+            'manage_options',
+            'koopo-stories-moderation',
+            [ __CLASS__, 'render_moderation' ]
+        );
     }
 
     public static function register_settings() : void {
@@ -107,6 +116,13 @@ final class Koopo_Stories_Admin {
             'sanitize_callback' => function($v){ return in_array($v, ['unseen_first','recent_activity'], true) ? $v : 'unseen_first'; },
             'default' => 'unseen_first',
         ]);
+        // Moderation
+        register_setting(self::SETTINGS_GROUP, 'koopo_stories_auto_hide_threshold', [
+            'type' => 'integer',
+            'sanitize_callback' => function($v){ $v = intval($v); return max(0, min(100, $v)); },
+            'default' => 5,
+        ]);
+
         register_setting(self::SETTINGS_GROUP, 'koopo_stories_default_layout', [
             'type' => 'string',
             'sanitize_callback' => function($v){ return in_array($v, ['horizontal','vertical'], true) ? $v : 'horizontal'; },
@@ -193,6 +209,119 @@ final class Koopo_Stories_Admin {
         do_settings_sections(self::SETTINGS_SLUG);
         submit_button();
         echo '</form>';
+        echo '</div>';
+    }
+
+    public static function render_moderation() : void {
+        if ( ! current_user_can('manage_options') ) return;
+
+        // Handle actions
+        if ( isset($_POST['action']) && isset($_POST['report_id']) && check_admin_referer('koopo_moderation_action') ) {
+            $report_id = intval($_POST['report_id']);
+            $action = sanitize_text_field($_POST['action']);
+            $user_id = get_current_user_id();
+
+            if ( $action === 'dismiss' ) {
+                Koopo_Stories_Reports::update_report_status($report_id, 'dismissed', $user_id, 'dismissed_by_admin');
+                echo '<div class="notice notice-success"><p>Report dismissed.</p></div>';
+            } elseif ( $action === 'delete_story' ) {
+                $report = Koopo_Stories_Reports::get_story_reports( intval($_POST['story_id']) );
+                if ( !empty($report) ) {
+                    wp_trash_post( intval($_POST['story_id']) );
+                    Koopo_Stories_Reports::update_story_reports( intval($_POST['story_id']), 'actioned', $user_id, 'story_deleted' );
+                    echo '<div class="notice notice-success"><p>Story deleted and all reports marked as actioned.</p></div>';
+                }
+            }
+        }
+
+        $stats = Koopo_Stories_Reports::get_stats();
+        $reports = Koopo_Stories_Reports::get_pending_reports(50);
+
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('Story Moderation Queue', 'koopo') . '</h1>';
+
+        // Stats
+        echo '<div class="koopo-moderation-stats" style="display:flex;gap:20px;margin:20px 0;">';
+        echo '<div class="stat-box" style="background:#fff;padding:15px 20px;border-left:4px solid #d63638;box-shadow:0 1px 1px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin:0;font-size:32px;color:#d63638;">' . esc_html($stats['pending_count']) . '</h3>';
+        echo '<p style="margin:5px 0 0;color:#646970;">Pending Reports</p>';
+        echo '</div>';
+        echo '<div class="stat-box" style="background:#fff;padding:15px 20px;border-left:4px solid#00a32a;box-shadow:0 1px 1px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin:0;font-size:32px;color:#00a32a;">' . esc_html($stats['reviewed_count']) . '</h3>';
+        echo '<p style="margin:5px 0 0;color:#646970;">Reviewed</p>';
+        echo '</div>';
+        echo '<div class="stat-box" style="background:#fff;padding:15px 20px;border-left:4px solid #2271b1;box-shadow:0 1px 1px rgba(0,0,0,0.04);">';
+        echo '<h3 style="margin:0;font-size:32px;color:#2271b1;">' . esc_html($stats['unique_stories_reported']) . '</h3>';
+        echo '<p style="margin:5px 0 0;color:#646970;">Stories Reported</p>';
+        echo '</div>';
+        echo '</div>';
+
+        // Reports table
+        if ( empty($reports) ) {
+            echo '<div class="notice notice-info"><p>No pending reports. Great job keeping the community safe!</p></div>';
+        } else {
+            echo '<table class="wp-list-table widefat fixed striped">';
+            echo '<thead><tr>';
+            echo '<th>Story</th>';
+            echo '<th>Author</th>';
+            echo '<th>Reports</th>';
+            echo '<th>Latest Reason</th>';
+            echo '<th>Latest Reporter</th>';
+            echo '<th>Date</th>';
+            echo '<th>Actions</th>';
+            echo '</tr></thead><tbody>';
+
+            foreach ( $reports as $report ) {
+                $story_id = intval($report['story_id']);
+                $story = get_post($story_id);
+                if ( ! $story ) continue;
+
+                $author = get_user_by('id', intval($story->post_author));
+                $reporter = get_user_by('id', intval($report['reporter_user_id']));
+                $report_count = intval($report['report_count'] ?? 1);
+
+                echo '<tr>';
+                echo '<td><a href="' . esc_url(get_edit_post_link($story_id)) . '">Story #' . $story_id . '</a></td>';
+                echo '<td>' . esc_html($author ? $author->display_name : 'Unknown') . '</td>';
+                echo '<td><strong style="color:#d63638;">' . $report_count . '</strong></td>';
+                echo '<td>' . esc_html(ucfirst(str_replace('_', ' ', $report['reason']))) . '</td>';
+                echo '<td>' . esc_html($reporter ? $reporter->display_name : 'Unknown') . '</td>';
+                echo '<td>' . esc_html(human_time_diff(strtotime($report['created_at']), current_time('timestamp'))) . ' ago</td>';
+                echo '<td>';
+                echo '<form method="post" style="display:inline-block;margin-right:5px;">';
+                wp_nonce_field('koopo_moderation_action');
+                echo '<input type="hidden" name="report_id" value="' . intval($report['id']) . '">';
+                echo '<input type="hidden" name="story_id" value="' . $story_id . '">';
+                echo '<button type="submit" name="action" value="dismiss" class="button button-small">Dismiss</button>';
+                echo '</form>';
+                echo '<form method="post" style="display:inline-block;">';
+                wp_nonce_field('koopo_moderation_action');
+                echo '<input type="hidden" name="report_id" value="' . intval($report['id']) . '">';
+                echo '<input type="hidden" name="story_id" value="' . $story_id . '">';
+                echo '<button type="submit" name="action" value="delete_story" class="button button-small button-link-delete" onclick="return confirm(\'Are you sure you want to delete this story?\');">Delete Story</button>';
+                echo '</form>';
+                echo '</td>';
+                echo '</tr>';
+            }
+
+            echo '</tbody></table>';
+        }
+
+        // Settings
+        echo '<hr style="margin:40px 0 20px;">';
+        echo '<h2>Moderation Settings</h2>';
+        echo '<form method="post" action="options.php">';
+        settings_fields(self::SETTINGS_GROUP);
+        echo '<table class="form-table">';
+        echo '<tr><th scope="row">Auto-Hide Threshold</th><td>';
+        $threshold = intval(get_option('koopo_stories_auto_hide_threshold', 5));
+        echo '<input type="number" name="koopo_stories_auto_hide_threshold" value="' . $threshold . '" min="0" max="100" class="small-text">';
+        echo '<p class="description">Number of reports before a story is automatically hidden (0 = disabled)</p>';
+        echo '</td></tr>';
+        echo '</table>';
+        submit_button();
+        echo '</form>';
+
         echo '</div>';
     }
 

@@ -32,6 +32,8 @@ final class Koopo_Stories_Module {
         require_once KOOPO_PATH . 'includes/stories/class-stories-close-friends-ui.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-reactions.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-replies.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-reports.php';
+        require_once KOOPO_PATH . 'includes/stories/class-stories-stickers.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-permissions.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-rest.php';
         require_once KOOPO_PATH . 'includes/stories/class-stories-cleanup.php';
@@ -51,17 +53,8 @@ final class Koopo_Stories_Module {
             add_action('rest_api_init', [ 'Koopo_Stories_REST', 'register_routes' ]);
         }
 
-        // Views table installer
-        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Views_Table', 'install' ] );
-
-        // Close friends table installer
-        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Close_Friends', 'install' ] );
-
-        // Reactions table installer
-        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Reactions', 'install' ] );
-
-        // Replies table installer
-        register_activation_hook( KOOPO_PATH . 'koopo.php', [ 'Koopo_Stories_Replies', 'install' ] );
+        // Note: Database table installation is handled by the activation hook in koopo.php
+        // to ensure proper loading order and avoid issues with nested activation hooks
 
         // Cron cleanup (only when enabled)
         if ( $enabled ) {

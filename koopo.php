@@ -15,6 +15,39 @@ register_activation_hook(__FILE__, function () {
     if ( get_option('koopo_enable_stories', null) === null ) {
         add_option('koopo_enable_stories', '1');
     }
+
+    // Install database tables for Stories feature
+    // Load the module first to ensure all dependencies are available
+    if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-module.php' ) ) {
+        require_once KOOPO_PATH . 'includes/stories/class-stories-module.php';
+
+        // Now load and install each table class
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-views-table.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-views-table.php';
+            Koopo_Stories_Views_Table::install();
+        }
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-close-friends.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-close-friends.php';
+            Koopo_Stories_Close_Friends::install();
+        }
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-reactions.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-reactions.php';
+            Koopo_Stories_Reactions::install();
+        }
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-replies.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-replies.php';
+            Koopo_Stories_Replies::install();
+        }
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-reports.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-reports.php';
+            Koopo_Stories_Reports::install();
+        }
+        if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-stickers.php' ) ) {
+            require_once KOOPO_PATH . 'includes/stories/class-stories-stickers.php';
+            Koopo_Stories_Stickers::install();
+            Koopo_Stories_Stickers::install_poll_votes_table();
+        }
+    }
 });
 
 
@@ -53,15 +86,18 @@ if ( file_exists( plugin_dir_path(__FILE__) . 'includes/koopo-shortcodes.php' ) 
 
 // Stories (BuddyBoss) — bootstrap on plugins_loaded so BuddyBoss/BuddyPress APIs are available.
 add_action( 'plugins_loaded', function () {
-    // Only initialize if enabled in settings.
-    // The option is registered in admin-settings/tweaks; we defensively check here.
-    // Stories feature (always load admin/settings; frontend output guarded internally)
-    if ( file_exists( KOOPO_PATH . 'includes/stories-feature.php' ) ) {
-        require_once KOOPO_PATH . 'includes/stories-feature.php';
+    // Define Stories version constant
+    if ( ! defined('KOOPO_STORIES_VER') ) {
+        define('KOOPO_STORIES_VER', '1.0.0');
+    }
 
-        if ( class_exists( 'Koopo_Stories_Feature' ) ) {
-            $koopo_stories = new Koopo_Stories_Feature();
-            $koopo_stories->init();
+    // Load Stories module directly
+    if ( file_exists( KOOPO_PATH . 'includes/stories/class-stories-module.php' ) ) {
+        require_once KOOPO_PATH . 'includes/stories/class-stories-module.php';
+
+        // Initialize the Stories module
+        if ( class_exists( 'Koopo_Stories_Module' ) ) {
+            Koopo_Stories_Module::instance()->init();
         }
     }
 }, 20 );

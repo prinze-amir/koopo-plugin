@@ -43,14 +43,17 @@
 
   // Viewer singleton
   const Viewer = (() => {
-    let root, barsWrap, headerAvatar, headerName, closeBtn, stage, tapPrev, tapNext, headerAvatarLink, viewCount;
+    let root, barsWrap, headerAvatar, headerName, closeBtn, reportBtn, stage, tapPrev, tapNext, headerAvatarLink, viewCount, reactionCount, muteBtn;
+    let bottomBar, reactionBtn, replyBtn;
     let story = null;
-    let storyIndex = 0;
+    let allStories = [];  // All available stories in the tray
+    let currentStoryIndex = 0;  // Index in allStories array
     let itemIndex = 0;
     let raf = null;
     let startTs = 0;
     let duration = 5000;
     let paused = false;
+    let isMuted = true;
 
     function ensure() {
       if (root) return;
@@ -58,10 +61,21 @@
       headerAvatar = el('img', { src: '' });
       headerAvatarLink = el('a', { href: '#', class: 'koopo-stories__avatar-link' }, [headerAvatar]);
       headerName = el('div', { class: 'koopo-stories__who', html: '' });
-      viewCount = el('div', { class: 'koopo-stories__view-count', style: 'font-size:12px;opacity:0.8;margin-left:auto;margin-right:10px;cursor:pointer;', html: '' });
+
+      // Stats container (views and reactions)
+      const statsWrap = el('div', { style: 'margin-left:auto;display:flex;gap:12px;align-items:center;' });
+      viewCount = el('div', { class: 'koopo-stories__view-count', style: 'font-size:12px;opacity:0.8;cursor:pointer;', html: '' });
+      reactionCount = el('div', { class: 'koopo-stories__reaction-count', style: 'font-size:12px;opacity:0.8;', html: '' });
+      statsWrap.appendChild(viewCount);
+      statsWrap.appendChild(reactionCount);
+
+      muteBtn = el('button', { class: 'koopo-stories__mute', type: 'button', style: 'background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 10px;opacity:0.7;', title: 'Toggle sound' });
+      muteBtn.textContent = '🔇';
+      reportBtn = el('button', { class: 'koopo-stories__report', type: 'button', style: 'background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 10px;opacity:0.7;', title: 'Report this story' });
+      reportBtn.textContent = '⚠';
       closeBtn = el('button', { class: 'koopo-stories__close', type: 'button' }, []);
       closeBtn.textContent = '×';
-      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatarLink, headerName, viewCount, closeBtn]);
+      const header = el('div', { class: 'koopo-stories__header' }, [headerAvatarLink, headerName, statsWrap, muteBtn, reportBtn, closeBtn]);
 
       stage = el('div', { class: 'koopo-stories__stage' });
       tapPrev = el('div', { class: 'koopo-stories__tap koopo-stories__tap--prev' });
@@ -69,13 +83,68 @@
       stage.appendChild(tapPrev);
       stage.appendChild(tapNext);
 
+      // Bottom bar with reaction and reply buttons
+      reactionBtn = el('button', {
+        class: 'koopo-stories__action-btn',
+        style: 'background:none;border:none;color:#fff;font-size:24px;cursor:pointer;padding:8px 16px;',
+        type: 'button'
+      });
+      reactionBtn.textContent = '❤️';
+
+      replyBtn = el('button', {
+        class: 'koopo-stories__action-btn',
+        style: 'background:none;border:none;color:#fff;font-size:16px;cursor:pointer;padding:8px 16px;',
+        type: 'button'
+      });
+      replyBtn.textContent = '💬 Reply';
+
+      bottomBar = el('div', {
+        class: 'koopo-stories__viewer-bottom',
+        style: 'padding:12px;display:flex;gap:12px;justify-content:center;align-items:center;'
+      }, [reactionBtn, replyBtn]);
+
       const top = el('div', { class: 'koopo-stories__viewer-top' }, [barsWrap, header]);
-      root = el('div', { class: 'koopo-stories__viewer', role: 'dialog', 'aria-modal': 'true' }, [top, stage]);
+      root = el('div', { class: 'koopo-stories__viewer', role: 'dialog', 'aria-modal': 'true' }, [top, stage, bottomBar]);
       document.body.appendChild(root);
 
       closeBtn.addEventListener('click', close);
       tapPrev.addEventListener('click', () => prev());
       tapNext.addEventListener('click', () => next());
+
+      // Mute button - toggle audio for videos
+      muteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        isMuted = !isMuted;
+        muteBtn.textContent = isMuted ? '🔇' : '🔊';
+        muteBtn.title = isMuted ? 'Unmute' : 'Mute';
+
+        // Update current video if playing
+        const currentVideo = stage.querySelector('video.koopo-stories__media');
+        if (currentVideo) {
+          currentVideo.muted = isMuted;
+        }
+      });
+
+      // Report button - show report modal
+      reportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!story) return;
+        showReportModal(story.story_id, story.author);
+      });
+
+      // Reaction button - show emoji picker
+      reactionBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!story) return;
+        showReactionPicker(story.story_id);
+      });
+
+      // Reply button - show reply modal
+      replyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!story) return;
+        showReplyModal(story.story_id, story.author);
+      });
 
       // Hold to pause (mouse/touch)
       const pauseOn = () => { paused = true; };
@@ -93,9 +162,11 @@
       });
     }
 
-    function open(storyData) {
+    function open(storyData, storiesList = [], storyIdx = 0) {
       ensure();
       story = storyData;
+      allStories = storiesList;
+      currentStoryIndex = storyIdx;
       itemIndex = 0;
 
       headerAvatar.src = story.author?.avatar || '';
@@ -114,16 +185,37 @@
         headerAvatarLink.onclick = (e) => e.preventDefault();
       }
 
-      // Display view count if available (only visible to story author)
+      // Display analytics (views and reactions)
       const analytics = story.analytics || {};
       const views = analytics.view_count || 0;
+      const reactions = analytics.reaction_count || 0;
       const currentUserId = window.KoopoStories?.me || 0;
-      if (views > 0 && currentUserId === story.author?.id) {
-        viewCount.textContent = `👁 ${views} view${views !== 1 ? 's' : ''}`;
+      const isOwnStory = currentUserId === story.author?.id;
+
+      // Show view count (only to story author)
+      if (views > 0 && isOwnStory) {
+        viewCount.textContent = `👁 ${views}`;
         viewCount.style.display = 'block';
         viewCount.onclick = () => showViewerList(story.story_id);
       } else {
         viewCount.style.display = 'none';
+      }
+
+      // Show reaction count (visible to everyone if > 0)
+      if (reactions > 0) {
+        reactionCount.textContent = `❤️ ${reactions}`;
+        reactionCount.style.display = 'block';
+      } else {
+        reactionCount.style.display = 'none';
+      }
+
+      // Hide reaction/reply buttons for own stories
+      if (isOwnStory) {
+        bottomBar.style.display = 'none';
+        reportBtn.style.display = 'none';
+      } else {
+        bottomBar.style.display = 'flex';
+        reportBtn.style.display = 'block';
       }
 
       buildBars(story.items?.length || 0);
@@ -191,7 +283,7 @@
         vid.className = 'koopo-stories__media';
         vid.src = item.src;
         vid.playsInline = true;
-        vid.muted = true;
+        vid.muted = isMuted;
         vid.autoplay = true;
         vid.controls = false;
         vid.addEventListener('loadedmetadata', () => {
@@ -201,12 +293,20 @@
         });
         vid.addEventListener('ended', () => next());
         stage.appendChild(vid);
+
+        // Show mute button for videos
+        muteBtn.style.display = 'block';
+
         vid.play().catch(()=>{});
       } else {
         const img = document.createElement('img');
         img.className = 'koopo-stories__media';
         img.src = item.src;
         stage.appendChild(img);
+
+        // Hide mute button for images
+        muteBtn.style.display = 'none';
+
         duration = item.duration_ms || 5000;
         startTs = performance.now();
         loop();
@@ -230,10 +330,33 @@
       raf = requestAnimationFrame(loop);
     }
 
-    function next() {
+    async function next() {
       const items = story.items || [];
-      if (itemIndex + 1 < items.length) playItem(itemIndex + 1);
-      else close();
+      if (itemIndex + 1 < items.length) {
+        // More items in current story
+        playItem(itemIndex + 1);
+      } else if (allStories.length > 0 && currentStoryIndex + 1 < allStories.length) {
+        // Current story finished, load next user's story
+        const nextStoryData = allStories[currentStoryIndex + 1];
+        if (nextStoryData && nextStoryData.story_id) {
+          try {
+            const nextStory = await apiGet(`${API_BASE}/${nextStoryData.story_id}`);
+            open(nextStory, allStories, currentStoryIndex + 1);
+
+            // Update ring to mark as seen
+            const bubble = document.querySelector(`.koopo-stories__bubble[data-story-id="${nextStoryData.story_id}"]`);
+            if (bubble) bubble.setAttribute('data-seen', '1');
+          } catch(e) {
+            console.error('Failed to load next story:', e);
+            close();
+          }
+        } else {
+          close();
+        }
+      } else {
+        // No more stories
+        close();
+      }
     }
 
     function prev() {
@@ -268,6 +391,8 @@
       container.appendChild(meBubble);
     }
 
+    // Store stories list on container for later access
+    container._storiesList = stories;
     stories.forEach(s => container.appendChild(bubble(s, false, showUnseenBadge)));
   }
 
@@ -314,8 +439,16 @@
       b.addEventListener('click', async () => {
         const storyId = b.getAttribute('data-story-id');
         if (!storyId) return;
+
+        // Get all stories from the container
+        const container = b.closest('.koopo-stories');
+        const allStoriesInTray = container?._storiesList || [];
+
+        // Find the index of the clicked story
+        const clickedIndex = allStoriesInTray.findIndex(st => String(st.story_id) === storyId);
+
         const story = await apiGet(`${API_BASE}/${storyId}`);
-        Viewer.open(story);
+        Viewer.open(story, allStoriesInTray, clickedIndex >= 0 ? clickedIndex : 0);
         // update ring locally
         b.setAttribute('data-seen','1');
       });
@@ -422,6 +555,210 @@
     panel.appendChild(title);
     panel.appendChild(preview);
     panel.appendChild(privacyWrap);
+    panel.appendChild(actions);
+    panel.appendChild(status);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  }
+
+  // Show reaction picker
+  function showReactionPicker(storyId) {
+    const reactions = ['❤️', '😂', '😮', '😢', '👏', '🔥'];
+
+    const overlay = el('div', {
+      class: 'koopo-stories__composer',
+      style: 'z-index:9999999;background:rgba(0,0,0,0.3);'
+    });
+
+    const picker = el('div', {
+      style: 'background:#fff;border-radius:50px;padding:12px 16px;display:flex;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.3);'
+    });
+
+    reactions.forEach(emoji => {
+      const btn = el('button', {
+        style: 'background:none;border:none;font-size:32px;cursor:pointer;padding:8px;transition:transform 0.2s;',
+        type: 'button'
+      });
+      btn.textContent = emoji;
+      btn.onmouseover = () => { btn.style.transform = 'scale(1.2)'; };
+      btn.onmouseout = () => { btn.style.transform = 'scale(1)'; };
+      btn.onclick = async () => {
+        overlay.remove();
+        try {
+          const fd = new FormData();
+          fd.append('reaction', emoji);
+          await apiPost(`${API_BASE}/${storyId}/reactions`, fd);
+          // Update reaction button to show user reacted
+          const viewer = document.querySelector('.koopo-stories__viewer');
+          if (viewer) {
+            const reactionBtn = viewer.querySelector('.koopo-stories__action-btn');
+            if (reactionBtn) {
+              reactionBtn.textContent = emoji;
+              reactionBtn.style.transform = 'scale(1.2)';
+              setTimeout(() => { reactionBtn.style.transform = 'scale(1)'; }, 200);
+            }
+          }
+        } catch(e) {
+          console.error('Failed to add reaction:', e);
+        }
+      };
+      picker.appendChild(btn);
+    });
+
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    overlay.appendChild(picker);
+    document.body.appendChild(overlay);
+
+    // Center the picker
+    requestAnimationFrame(() => {
+      picker.style.position = 'absolute';
+      picker.style.top = '50%';
+      picker.style.left = '50%';
+      picker.style.transform = 'translate(-50%, -50%)';
+    });
+  }
+
+  // Show reply modal
+  function showReplyModal(storyId, author) {
+    const overlay = el('div', { class: 'koopo-stories__composer', style: 'z-index:9999999;' });
+    const panel = el('div', { class: 'koopo-stories__composer-panel' });
+    const title = el('div', { class: 'koopo-stories__composer-title' });
+    title.textContent = `Reply to ${author?.name || 'this story'}`;
+
+    const textarea = el('textarea', {
+      style: 'width:100%;min-height:120px;padding:12px;background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;font-size:14px;resize:vertical;box-sizing:border-box;',
+      placeholder: 'Write a reply...'
+    });
+
+    const actions = el('div', { class: 'koopo-stories__composer-actions' });
+    const cancelBtn = el('button', { class: 'koopo-stories__composer-cancel' });
+    cancelBtn.textContent = 'Cancel';
+    const sendBtn = el('button', { class: 'koopo-stories__composer-post' });
+    sendBtn.textContent = 'Send';
+
+    const status = el('div', { class: 'koopo-stories__composer-status' });
+
+    const close = () => overlay.remove();
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    sendBtn.addEventListener('click', async () => {
+      const message = textarea.value.trim();
+      if (!message) {
+        status.textContent = 'Please write a message';
+        return;
+      }
+
+      sendBtn.disabled = true;
+      cancelBtn.disabled = true;
+      status.textContent = 'Sending...';
+
+      try {
+        const fd = new FormData();
+        fd.append('message', message);
+        fd.append('is_dm', '1');
+        await apiPost(`${API_BASE}/${storyId}/replies`, fd);
+        status.textContent = 'Sent!';
+        setTimeout(close, 800);
+      } catch(e) {
+        status.textContent = e.message || 'Failed to send reply';
+        sendBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(sendBtn);
+
+    panel.appendChild(title);
+    panel.appendChild(el('div', { style: 'padding:14px;' }, [textarea]));
+    panel.appendChild(actions);
+    panel.appendChild(status);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    // Focus textarea
+    setTimeout(() => textarea.focus(), 100);
+  }
+
+  // Show report modal
+  function showReportModal(storyId, author) {
+    const overlay = el('div', { class: 'koopo-stories__composer', style: 'z-index:9999999;' });
+    const panel = el('div', { class: 'koopo-stories__composer-panel' });
+    const title = el('div', { class: 'koopo-stories__composer-title' });
+    title.textContent = `Report ${author?.name || 'this story'}`;
+
+    const reasons = [
+      { value: 'spam', label: 'Spam' },
+      { value: 'inappropriate', label: 'Inappropriate content' },
+      { value: 'harassment', label: 'Harassment or bullying' },
+      { value: 'violence', label: 'Violence or dangerous content' },
+      { value: 'hate_speech', label: 'Hate speech' },
+      { value: 'false_info', label: 'False information' },
+      { value: 'other', label: 'Other' },
+    ];
+
+    const selectWrap = el('div', { style: 'padding:14px;' });
+    const reasonLabel = el('label', { style: 'display:block;margin-bottom:8px;font-size:14px;font-weight:500;' });
+    reasonLabel.textContent = 'Reason for reporting:';
+
+    const reasonSelect = el('select', {
+      style: 'width:100%;padding:10px;background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;font-size:14px;'
+    });
+
+    reasons.forEach(r => {
+      const option = el('option', { value: r.value });
+      option.textContent = r.label;
+      reasonSelect.appendChild(option);
+    });
+
+    const textarea = el('textarea', {
+      style: 'width:100%;min-height:100px;padding:12px;background:#2a2a2a;border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;font-size:14px;resize:vertical;box-sizing:border-box;margin-top:12px;',
+      placeholder: 'Additional details (optional)...'
+    });
+
+    selectWrap.appendChild(reasonLabel);
+    selectWrap.appendChild(reasonSelect);
+    selectWrap.appendChild(textarea);
+
+    const actions = el('div', { class: 'koopo-stories__composer-actions' });
+    const cancelBtn = el('button', { class: 'koopo-stories__composer-cancel' });
+    cancelBtn.textContent = 'Cancel';
+    const submitBtn = el('button', { class: 'koopo-stories__composer-post' });
+    submitBtn.textContent = 'Submit Report';
+
+    const status = el('div', { class: 'koopo-stories__composer-status' });
+
+    const close = () => overlay.remove();
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    submitBtn.addEventListener('click', async () => {
+      submitBtn.disabled = true;
+      cancelBtn.disabled = true;
+      status.textContent = 'Submitting report...';
+
+      try {
+        const fd = new FormData();
+        fd.append('reason', reasonSelect.value);
+        fd.append('description', textarea.value.trim());
+        await apiPost(`${API_BASE}/${storyId}/report`, fd);
+        status.textContent = 'Report submitted. Thank you.';
+        setTimeout(close, 1500);
+      } catch(e) {
+        status.textContent = e.message || 'Failed to submit report';
+        submitBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+
+    panel.appendChild(title);
+    panel.appendChild(selectWrap);
     panel.appendChild(actions);
     panel.appendChild(status);
     overlay.appendChild(panel);

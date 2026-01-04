@@ -105,10 +105,52 @@ class Koopo_Stories_REST {
             'callback' => [ __CLASS__, 'get_analytics' ],
             'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
         ] );
+
+        // Reporting & Moderation
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stories/(?P<story_id>\d+)/report', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [ __CLASS__, 'report_story' ],
+            'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
+        ] );
+
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stories/reports', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [ __CLASS__, 'get_reports' ],
+            'permission_callback' => [ __CLASS__, 'can_moderate' ],
+        ] );
+
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stories/reports/(?P<report_id>\d+)', [
+            'methods' => WP_REST_Server::EDITABLE,
+            'callback' => [ __CLASS__, 'update_report' ],
+            'permission_callback' => [ __CLASS__, 'can_moderate' ],
+        ] );
+
+        // Stickers
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stories/(?P<story_id>\d+)/items/(?P<item_id>\d+)/stickers', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [ __CLASS__, 'add_sticker' ],
+            'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
+        ] );
+
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stickers/(?P<sticker_id>\d+)', [
+            'methods' => WP_REST_Server::DELETABLE,
+            'callback' => [ __CLASS__, 'delete_sticker' ],
+            'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
+        ] );
+
+        register_rest_route( Koopo_Stories_Module::REST_NS, '/stickers/(?P<sticker_id>\d+)/vote', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [ __CLASS__, 'vote_poll' ],
+            'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
+        ] );
     }
 
     public static function must_be_logged_in() : bool {
         return is_user_logged_in();
+    }
+
+    public static function can_moderate() : bool {
+        return is_user_logged_in() && current_user_can('manage_options');
     }
 
     public static function get_feed( WP_REST_Request $req ) {
@@ -374,6 +416,9 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             $duration = (int) get_post_meta($item_id, 'duration_ms', true);
             if ( $duration <= 0 && $type === 'image' ) $duration = 5000;
 
+            // Get stickers for this item
+            $stickers = Koopo_Stories_Stickers::get_stickers($item_id);
+
             $items_out[] = [
                 'item_id' => $item_id,
                 'type' => $type,
@@ -381,6 +426,7 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
                 'thumb' => $thumb,
                 'duration_ms' => $type === 'image' ? $duration : null,
                 'created_at' => mysql_to_rfc3339( get_gmt_from_date($item->post_date) ),
+                'stickers' => $stickers,
             ];
         }
 
@@ -781,6 +827,9 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
         $success = Koopo_Stories_Reactions::add_reaction($story_id, $user_id, $reaction, $item_id);
 
         if ( $success ) {
+            // Send BuddyBoss notification
+            self::send_reaction_notification($story_id, $user_id, $reaction);
+
             return new WP_REST_Response([
                 'ok' => true,
                 'message' => 'Reaction added',
@@ -933,6 +982,35 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
     }
 
     /**
+     * Send BuddyBoss notification for story reaction
+     */
+    private static function send_reaction_notification( int $story_id, int $sender_id, string $reaction ) {
+        // Get story author
+        $author_id = (int) get_post_field('post_author', $story_id);
+
+        // Don't notify if reacting to own story
+        if ( $author_id === $sender_id ) {
+            return;
+        }
+
+        // BuddyBoss notifications integration
+        if ( function_exists('bp_notifications_add_notification') ) {
+            $sender = get_user_by('id', $sender_id);
+            $sender_name = $sender ? $sender->display_name : 'Someone';
+
+            bp_notifications_add_notification([
+                'user_id' => $author_id,
+                'item_id' => $story_id,
+                'secondary_item_id' => $sender_id,
+                'component_name' => 'koopo_stories',
+                'component_action' => 'story_reaction',
+                'date_notified' => current_time('mysql'),
+                'is_new' => 1,
+            ]);
+        }
+    }
+
+    /**
      * Get list of viewers for a story
      */
     public static function get_viewers( WP_REST_Request $req ) {
@@ -1051,5 +1129,190 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
                 'total' => $reply_count,
             ],
         ], 200);
+    }
+
+    /**
+     * Report a story
+     */
+    public static function report_story( WP_REST_Request $req ) {
+        $user_id = get_current_user_id();
+        $story_id = (int) $req['story_id'];
+
+        // Verify story exists
+        $story = get_post($story_id);
+        if ( ! $story || $story->post_type !== Koopo_Stories_Module::CPT_STORY ) {
+            return new WP_REST_Response([ 'error' => 'not_found' ], 404);
+        }
+
+        // Can't report your own story
+        if ( (int) $story->post_author === $user_id ) {
+            return new WP_REST_Response([ 'error' => 'cannot_report_own_story' ], 400);
+        }
+
+        $reason = sanitize_text_field( $req->get_param('reason') ?: 'other' );
+        $description = sanitize_textarea_field( $req->get_param('description') ?: '' );
+
+        $result = Koopo_Stories_Reports::submit_report($story_id, $user_id, $reason, $description);
+
+        if ( $result ) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Report submitted successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([ 'error' => 'failed_to_submit_report' ], 500);
+    }
+
+    /**
+     * Get pending reports (admin only)
+     */
+    public static function get_reports( WP_REST_Request $req ) {
+        $limit = max(1, min(100, (int) $req->get_param('limit') ?: 50));
+        $offset = max(0, (int) $req->get_param('offset') ?: 0);
+
+        $reports = Koopo_Stories_Reports::get_pending_reports($limit, $offset);
+        $stats = Koopo_Stories_Reports::get_stats();
+
+        // Enrich with story and user data
+        $enriched = [];
+        foreach ( $reports as $report ) {
+            $story_id = (int) $report['story_id'];
+            $story = get_post($story_id);
+
+            if ( ! $story ) continue;
+
+            $author = get_user_by('id', (int) $story->post_author);
+            $reporter = get_user_by('id', (int) $report['reporter_user_id']);
+
+            $enriched[] = [
+                'id' => (int) $report['id'],
+                'story_id' => $story_id,
+                'story' => [
+                    'title' => 'Story by ' . ($author ? $author->display_name : 'Unknown'),
+                    'author' => [
+                        'id' => (int) $story->post_author,
+                        'name' => $author ? $author->display_name : 'Unknown',
+                        'avatar' => get_avatar_url((int) $story->post_author, [ 'size' => 64 ]),
+                    ],
+                    'created_at' => mysql_to_rfc3339( get_gmt_from_date($story->post_date) ),
+                ],
+                'reporter' => [
+                    'id' => (int) $report['reporter_user_id'],
+                    'name' => $reporter ? $reporter->display_name : 'Unknown',
+                ],
+                'reason' => $report['reason'],
+                'description' => $report['description'],
+                'status' => $report['status'],
+                'report_count' => (int) ($report['report_count'] ?? 1),
+                'created_at' => mysql_to_rfc3339( get_gmt_from_date($report['created_at']) ),
+            ];
+        }
+
+        return new WP_REST_Response([
+            'reports' => $enriched,
+            'stats' => $stats,
+        ], 200);
+    }
+
+    /**
+     * Update report status (admin only)
+     */
+    public static function update_report( WP_REST_Request $req ) {
+        $user_id = get_current_user_id();
+        $report_id = (int) $req['report_id'];
+        $status = sanitize_text_field( $req->get_param('status') ?: 'reviewed' );
+        $action_taken = sanitize_text_field( $req->get_param('action_taken') ?: null );
+
+        $result = Koopo_Stories_Reports::update_report_status($report_id, $status, $user_id, $action_taken);
+
+        if ( $result ) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Report updated successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response([ 'error' => 'failed_to_update_report' ], 500);
+    }
+
+    /**
+     * Add a sticker to a story item
+     */
+    public static function add_sticker( WP_REST_Request $req ) {
+        $user_id = get_current_user_id();
+        $story_id = (int) $req['story_id'];
+        $item_id = (int) $req['item_id'];
+        $type = sanitize_text_field( $req->get_param('type') );
+        $data = $req->get_param('data');
+        $position_x = (float) ($req->get_param('position_x') ?: 50.0);
+        $position_y = (float) ($req->get_param('position_y') ?: 50.0);
+
+        // Verify story ownership
+        $author_id = (int) get_post_field('post_author', $story_id);
+        if ( $author_id !== $user_id ) {
+            return new WP_REST_Response(['error' => 'not_story_owner'], 403);
+        }
+
+        // Verify item belongs to story
+        $item_story_id = (int) get_post_meta($item_id, 'story_id', true);
+        if ( $item_story_id !== $story_id ) {
+            return new WP_REST_Response(['error' => 'invalid_item'], 400);
+        }
+
+        if ( ! is_array($data) ) {
+            return new WP_REST_Response(['error' => 'invalid_data'], 400);
+        }
+
+        $sticker_id = Koopo_Stories_Stickers::add_sticker($story_id, $item_id, $type, $data, $position_x, $position_y);
+
+        if ( $sticker_id > 0 ) {
+            return new WP_REST_Response([
+                'success' => true,
+                'sticker_id' => $sticker_id,
+                'message' => 'Sticker added successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response(['error' => 'failed_to_add_sticker'], 500);
+    }
+
+    /**
+     * Delete a sticker
+     */
+    public static function delete_sticker( WP_REST_Request $req ) {
+        $user_id = get_current_user_id();
+        $sticker_id = (int) $req['sticker_id'];
+
+        $result = Koopo_Stories_Stickers::delete_sticker($sticker_id, $user_id);
+
+        if ( $result ) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Sticker deleted successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response(['error' => 'failed_to_delete_sticker'], 403);
+    }
+
+    /**
+     * Vote on a poll sticker
+     */
+    public static function vote_poll( WP_REST_Request $req ) {
+        $user_id = get_current_user_id();
+        $sticker_id = (int) $req['sticker_id'];
+        $option_index = (int) $req->get_param('option_index');
+
+        $result = Koopo_Stories_Stickers::vote_poll($sticker_id, $user_id, $option_index);
+
+        if ( $result ) {
+            return new WP_REST_Response([
+                'success' => true,
+                'message' => 'Vote recorded successfully',
+            ], 200);
+        }
+
+        return new WP_REST_Response(['error' => 'failed_to_vote'], 400);
     }
 }
