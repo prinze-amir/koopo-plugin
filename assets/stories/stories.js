@@ -1,8 +1,17 @@
 (() => {
-  if (!window.KoopoStories) return;
+  if (!window.KoopoStories) {
+    console.error('KoopoStories not initialized - Stories may be disabled or plugin not loaded');
+    return;
+  }
 
   const API_BASE = window.KoopoStories.restUrl; // .../koopo/v1/stories
   const NONCE = window.KoopoStories.nonce;
+
+  console.log('Koopo Stories initialized:', {
+    restUrl: API_BASE,
+    hasNonce: !!NONCE,
+    userId: window.KoopoStories.me
+  });
 
   const headers = () => ({
     'X-WP-Nonce': NONCE,
@@ -10,8 +19,34 @@
 
   async function apiGet(url) {
     const res = await fetch(url, { credentials: 'same-origin', headers: headers() });
-    if (!res.ok) throw new Error('Request failed');
-    return res.json();
+
+    if (!res.ok) {
+      const statusText = res.statusText || 'Request failed';
+      console.error('API GET failed:', url, 'Status:', res.status, statusText);
+      throw new Error(`Request failed: ${res.status} ${statusText}`);
+    }
+
+    // Check if response has content
+    const contentType = res.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Invalid content-type:', contentType, 'for URL:', url);
+      const text = await res.text();
+      console.error('Response body:', text.substring(0, 500));
+      throw new Error('Server returned non-JSON response');
+    }
+
+    const text = await res.text();
+    if (!text || text.trim() === '') {
+      console.error('Empty response from:', url);
+      throw new Error('Empty response from server');
+    }
+
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      console.error('JSON parse error:', e, 'Response:', text.substring(0, 500));
+      throw new Error('Invalid JSON response from server');
+    }
   }
 
   async function apiPost(url, body) {
