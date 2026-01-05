@@ -130,6 +130,24 @@ class Koopo_Stories_REST {
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => [ __CLASS__, 'add_sticker' ],
             'permission_callback' => [ __CLASS__, 'must_be_logged_in' ],
+            'args' => [
+                'type' => [
+                    'required' => true,
+                    'type' => 'string',
+                ],
+                'data' => [
+                    'required' => true,
+                    'type' => 'object',
+                ],
+                'position_x' => [
+                    'type' => 'number',
+                    'default' => 50.0,
+                ],
+                'position_y' => [
+                    'type' => 'number',
+                    'default' => 50.0,
+                ],
+            ],
         ] );
 
         register_rest_route( Koopo_Stories_Module::REST_NS, '/stickers/(?P<sticker_id>\d+)', [
@@ -251,7 +269,8 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
 
         $stories = get_posts($q);
 
-        $out = [];
+        // Group stories by author_id
+        $grouped = [];
         foreach ( $stories as $story ) {
             $sid = (int) $story->ID;
 
@@ -274,49 +293,88 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             $items_count = is_array($items) ? count($items) : 0;
             if ( $items_count === 0 ) continue;
 
+            $author_id = (int) $story->post_author;
+
+            // Initialize author entry if not exists
+            if ( ! isset($grouped[$author_id]) ) {
+                $profile_url = '';
+                if ( function_exists('bp_core_get_user_domain') ) {
+                    $profile_url = bp_core_get_user_domain($author_id);
+                }
+
+                $grouped[$author_id] = [
+                    'story_id' => $sid, // Use first story ID as main
+                    'story_ids' => [],
+                    'author' => [
+                        'id' => $author_id,
+                        'name' => get_the_author_meta('display_name', $author_id),
+                        'avatar' => get_avatar_url($author_id, [ 'size' => 96 ]),
+                        'profile_url' => $profile_url,
+                    ],
+                    'cover_thumb' => '',
+                    'last_updated' => '',
+                    'has_unseen' => false,
+                    'unseen_count' => 0,
+                    'items_count' => 0,
+                    'all_items' => [],
+                    'privacy' => 'friends',
+                ];
+            }
+
+            // Add this story's data to the author group
+            $grouped[$author_id]['story_ids'][] = $sid;
+            $grouped[$author_id]['items_count'] += $items_count;
+            $grouped[$author_id]['all_items'] = array_merge($grouped[$author_id]['all_items'], $items);
+
+            // Update last_updated if this story is more recent
+            $story_updated = get_post_modified_time(DATE_ATOM, true, $sid);
+            if ( empty($grouped[$author_id]['last_updated']) || $story_updated > $grouped[$author_id]['last_updated'] ) {
+                $grouped[$author_id]['last_updated'] = $story_updated;
+            }
+
+            // Set cover thumb from first item if not set
+            if ( empty($grouped[$author_id]['cover_thumb']) && !empty($items) ) {
+                $first_item_id = (int) $items[0];
+                $att_id = (int) get_post_meta($first_item_id, 'attachment_id', true);
+                if ( $att_id ) {
+                    $thumb = wp_get_attachment_image_url($att_id, 'thumbnail');
+                    if ( $thumb ) $grouped[$author_id]['cover_thumb'] = $thumb;
+                }
+            }
+
+            // Update privacy if this story is more restrictive
+            $privacy = get_post_meta($sid, 'privacy', true);
+            if ( empty($privacy) ) $privacy = 'friends';
+            if ( $privacy === 'close_friends' ) {
+                $grouped[$author_id]['privacy'] = 'close_friends';
+            }
+        }
+
+        // Calculate unseen counts for each author's grouped stories
+        $out = [];
+        foreach ( $grouped as $author_id => $data ) {
+            $all_items = $data['all_items'];
+            $seen_map = Koopo_Stories_Views_Table::has_seen_any($all_items, $user_id);
+
             $has_unseen = false;
             $unseen_count = 0;
-            $cover_thumb = '';
-
-            $seen_map = Koopo_Stories_Views_Table::has_seen_any($items, $user_id);
-            foreach ($items as $iid) {
+            foreach ($all_items as $iid) {
                 if ( empty($seen_map[(int)$iid]) ) {
                     $has_unseen = true;
                     $unseen_count++;
                 }
             }
 
-            // Cover thumb: first item thumb
-            $first_item_id = (int) $items[0];
-            $att_id = (int) get_post_meta($first_item_id, 'attachment_id', true);
-            if ( $att_id ) {
-                $thumb = wp_get_attachment_image_url($att_id, 'thumbnail');
-                if ( $thumb ) $cover_thumb = $thumb;
-            }
-
-            $author_id = (int) $story->post_author;
-            $profile_url = '';
-            if ( function_exists('bp_core_get_user_domain') ) {
-                $profile_url = bp_core_get_user_domain($author_id);
-            }
-
-            $privacy = get_post_meta($sid, 'privacy', true);
-            if ( empty($privacy) ) $privacy = 'friends';
-
             $out[] = [
-                'story_id' => $sid,
-                'author' => [
-                    'id' => $author_id,
-                    'name' => get_the_author_meta('display_name', $author_id),
-                    'avatar' => get_avatar_url($author_id, [ 'size' => 96 ]),
-                    'profile_url' => $profile_url,
-                ],
-                'cover_thumb' => $cover_thumb,
-                'last_updated' => get_post_modified_time(DATE_ATOM, true, $sid),
+                'story_id' => $data['story_id'],
+                'story_ids' => $data['story_ids'],
+                'author' => $data['author'],
+                'cover_thumb' => $data['cover_thumb'],
+                'last_updated' => $data['last_updated'],
                 'has_unseen' => $has_unseen,
                 'unseen_count' => $unseen_count,
-                'items_count' => $items_count,
-                'privacy' => $privacy,
+                'items_count' => $data['items_count'],
+                'privacy' => $data['privacy'],
             ];
         }
 
@@ -953,7 +1011,7 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
     }
 
     /**
-     * Send BuddyBoss notification for story reply
+     * Send BuddyBoss message and notification for story reply
      */
     private static function send_reply_notification( int $story_id, int $sender_id, string $message ) {
         // Get story author
@@ -964,11 +1022,28 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             return;
         }
 
-        // BuddyBoss notifications integration
-        if ( function_exists('bp_notifications_add_notification') ) {
-            $sender = get_user_by('id', $sender_id);
-            $sender_name = $sender ? $sender->display_name : 'Someone';
+        $sender = get_user_by('id', $sender_id);
+        $sender_name = $sender ? $sender->display_name : 'Someone';
 
+        // Send BuddyBoss private message
+        if ( function_exists('messages_new_message') ) {
+            $message_content = sprintf(
+                '%s replied to your story: %s',
+                $sender_name,
+                $message
+            );
+
+            messages_new_message([
+                'sender_id' => $sender_id,
+                'recipients' => [$author_id],
+                'subject' => sprintf('%s replied to your story', $sender_name),
+                'content' => $message_content,
+                'error_type' => 'wp_error',
+            ]);
+        }
+
+        // Also send BuddyBoss notification
+        if ( function_exists('bp_notifications_add_notification') ) {
             bp_notifications_add_notification([
                 'user_id' => $author_id,
                 'item_id' => $story_id,
@@ -982,7 +1057,7 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
     }
 
     /**
-     * Send BuddyBoss notification for story reaction
+     * Send BuddyBoss message and notification for story reaction
      */
     private static function send_reaction_notification( int $story_id, int $sender_id, string $reaction ) {
         // Get story author
@@ -993,11 +1068,28 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             return;
         }
 
-        // BuddyBoss notifications integration
-        if ( function_exists('bp_notifications_add_notification') ) {
-            $sender = get_user_by('id', $sender_id);
-            $sender_name = $sender ? $sender->display_name : 'Someone';
+        $sender = get_user_by('id', $sender_id);
+        $sender_name = $sender ? $sender->display_name : 'Someone';
 
+        // Send BuddyBoss private message for reaction
+        if ( function_exists('messages_new_message') ) {
+            $message_content = sprintf(
+                '%s reacted to your story with %s',
+                $sender_name,
+                $reaction
+            );
+
+            messages_new_message([
+                'sender_id' => $sender_id,
+                'recipients' => [$author_id],
+                'subject' => sprintf('%s reacted to your story', $sender_name),
+                'content' => $message_content,
+                'error_type' => 'wp_error',
+            ]);
+        }
+
+        // Also send BuddyBoss notification
+        if ( function_exists('bp_notifications_add_notification') ) {
             bp_notifications_add_notification([
                 'user_id' => $author_id,
                 'item_id' => $story_id,
@@ -1248,25 +1340,50 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
         $position_x = (float) ($req->get_param('position_x') ?: 50.0);
         $position_y = (float) ($req->get_param('position_y') ?: 50.0);
 
+        // Log incoming request for debugging
+        error_log('Koopo Stories - Add Sticker Request: ' . json_encode([
+            'user_id' => $user_id,
+            'story_id' => $story_id,
+            'item_id' => $item_id,
+            'type' => $type,
+            'data' => $data,
+            'position_x' => $position_x,
+            'position_y' => $position_y,
+        ]));
+
         // Verify story ownership
         $author_id = (int) get_post_field('post_author', $story_id);
         if ( $author_id !== $user_id ) {
+            error_log('Koopo Stories - Add Sticker Error: User not story owner. User: ' . $user_id . ', Author: ' . $author_id);
             return new WP_REST_Response(['error' => 'not_story_owner'], 403);
         }
 
         // Verify item belongs to story
         $item_story_id = (int) get_post_meta($item_id, 'story_id', true);
         if ( $item_story_id !== $story_id ) {
+            error_log('Koopo Stories - Add Sticker Error: Item does not belong to story. Item story_id: ' . $item_story_id . ', Expected: ' . $story_id);
             return new WP_REST_Response(['error' => 'invalid_item'], 400);
         }
 
         if ( ! is_array($data) ) {
+            error_log('Koopo Stories - Add Sticker Error: Data is not an array. Type: ' . gettype($data) . ', Value: ' . json_encode($data));
             return new WP_REST_Response(['error' => 'invalid_data'], 400);
+        }
+
+        // Check if stickers table exists
+        global $wpdb;
+        $stickers_table = $wpdb->prefix . 'koopo_story_stickers';
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$stickers_table}'") === $stickers_table;
+
+        if ( ! $table_exists ) {
+            error_log('Koopo Stories - Add Sticker Error: Stickers table does not exist: ' . $stickers_table);
+            return new WP_REST_Response(['error' => 'stickers_table_missing', 'message' => 'Database table not found. Please deactivate and reactivate the plugin.'], 500);
         }
 
         $sticker_id = Koopo_Stories_Stickers::add_sticker($story_id, $item_id, $type, $data, $position_x, $position_y);
 
         if ( $sticker_id > 0 ) {
+            error_log('Koopo Stories - Add Sticker Success: Sticker ID ' . $sticker_id);
             return new WP_REST_Response([
                 'success' => true,
                 'sticker_id' => $sticker_id,
@@ -1274,7 +1391,8 @@ if ( $max_items_per_story < 0 ) $max_items_per_story = 0;
             ], 200);
         }
 
-        return new WP_REST_Response(['error' => 'failed_to_add_sticker'], 500);
+        error_log('Koopo Stories - Add Sticker Error: add_sticker() returned 0 or false');
+        return new WP_REST_Response(['error' => 'failed_to_add_sticker', 'message' => 'Sticker validation or database insert failed. Check error log for details.'], 500);
     }
 
     /**

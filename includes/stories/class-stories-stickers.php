@@ -43,17 +43,30 @@ class Koopo_Stories_Stickers {
         global $wpdb;
         $table = $wpdb->prefix . self::TABLE_NAME;
 
+        error_log('Koopo Stickers - add_sticker called with: ' . json_encode([
+            'story_id' => $story_id,
+            'item_id' => $item_id,
+            'type' => $type,
+            'data' => $data,
+            'x' => $x,
+            'y' => $y,
+        ]));
+
         // Validate sticker type
         $allowed_types = ['mention', 'link', 'location', 'poll'];
         if ( ! in_array($type, $allowed_types, true) ) {
+            error_log('Koopo Stickers - Invalid type: ' . $type);
             return 0;
         }
 
         // Validate and sanitize data based on type
         $sanitized_data = self::sanitize_sticker_data($type, $data);
         if ( empty($sanitized_data) ) {
+            error_log('Koopo Stickers - Sanitize failed. Original data: ' . json_encode($data));
             return 0;
         }
+
+        error_log('Koopo Stickers - Sanitized data: ' . json_encode($sanitized_data));
 
         $result = $wpdb->insert(
             $table,
@@ -70,9 +83,11 @@ class Koopo_Stories_Stickers {
         );
 
         if ( $result === false ) {
+            error_log('Koopo Stickers - Database insert failed. wpdb->last_error: ' . $wpdb->last_error);
             return 0;
         }
 
+        error_log('Koopo Stickers - Successfully inserted sticker with ID: ' . $wpdb->insert_id);
         return (int) $wpdb->insert_id;
     }
 
@@ -97,6 +112,15 @@ class Koopo_Stories_Stickers {
         foreach ( $results as $row ) {
             $data = json_decode($row['sticker_data'], true);
             if ( is_array($data) ) {
+                // For mention stickers, ensure profile_url is included (for backward compatibility)
+                if ( $row['sticker_type'] === 'mention' && ! isset($data['profile_url']) && isset($data['user_id']) ) {
+                    $profile_url = '';
+                    if ( function_exists('bp_core_get_user_domain') ) {
+                        $profile_url = bp_core_get_user_domain((int) $data['user_id']);
+                    }
+                    $data['profile_url'] = $profile_url;
+                }
+
                 $stickers[] = [
                     'id' => (int) $row['id'],
                     'type' => $row['sticker_type'],
@@ -153,19 +177,35 @@ class Koopo_Stories_Stickers {
     private static function sanitize_sticker_data( string $type, array $data ) : array {
         switch ( $type ) {
             case 'mention':
-                // Mention: { user_id, username, display_name }
-                if ( empty($data['user_id']) || ! is_numeric($data['user_id']) ) {
-                    return [];
+                // Mention: { user_id, username, display_name, profile_url }
+                // Accept either user_id or username
+                $user = false;
+
+                if ( ! empty($data['user_id']) && is_numeric($data['user_id']) ) {
+                    $user_id = (int) $data['user_id'];
+                    $user = get_user_by('id', $user_id);
+                } elseif ( ! empty($data['username']) ) {
+                    $user = get_user_by('login', $data['username']);
                 }
-                $user_id = (int) $data['user_id'];
-                $user = get_user_by('id', $user_id);
+
                 if ( ! $user ) {
+                    error_log('Koopo Stickers - Mention user not found. Data: ' . json_encode($data));
                     return [];
                 }
+
+                $user_id = (int) $user->ID;
+
+                // Get BuddyBoss/BuddyPress profile URL if available
+                $profile_url = '';
+                if ( function_exists('bp_core_get_user_domain') ) {
+                    $profile_url = bp_core_get_user_domain($user_id);
+                }
+
                 return [
                     'user_id' => $user_id,
                     'username' => $user->user_login,
                     'display_name' => $user->display_name,
+                    'profile_url' => $profile_url,
                 ];
 
             case 'link':

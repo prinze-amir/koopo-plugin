@@ -44,7 +44,7 @@
 .koopo-stories__composer-privacy-select:focus{border-color:rgba(255,255,255,.3); color:#333}
 .koopo-stories__composer-actions{display:flex;gap:10px;justify-content:flex-end;padding:12px 14px;border-top:1px solid rgba(255,255,255,.08)}
 .koopo-stories__composer-actions button{appearance:none;border:0;border-radius:10px;padding:10px 12px;font-weight:600;cursor:pointer}
-.koopo-stories__composer-cancel{background:#2a2a2a;color:#fff}
+.koopo-stories__composer-cancel{background:#2a2a2a;color:#fff;border-color:#1cff8e}
 .koopo-stories__composer-post{background:#fff;color:#111}
 .koopo-stories__composer-actions button:disabled{opacity:.6;cursor:not-allowed}
 .koopo-stories__composer-status{padding:0 14px 14px 14px;font-size:13px;opacity:.9}
@@ -53,3 +53,52 @@
 .koopo-stories__avatar{position:relative;}
 .koopo-stories__badge{position:absolute;right:-4px;top:-4px;min-width:18px;padding:1px 7px;border-radius:999px;background:#d63638;color:#fff;font-size:12px;line-height:18px;text-align:center;border:2px solid #fff;box-sizing:border-box;}
 .koopo-stories__privacy-icon{position:absolute;bottom:-2px;right:-2px;width:20px;height:20px;border-radius:999px;background:rgba(0,0,0,.75);color:#fff;font-size:11px;line-height:20px;text-align:center;border:2px solid #fff;box-sizing:border-box;display:flex;align-items:center;justify-content:center;}
+
+/* Loading Spinner */
+.koopo-stories__loader{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:10;}
+.koopo-stories__loader.with-overlay{background:rgba(0,0,0,.7);}
+.koopo-stories__click-loader{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:999999;background:rgba(0,0,0,.7);}
+.koopo-stories__spinner{width:40px;height:40px;border:3px solid rgba(255,186,18,.3);border-top-color:#ffba12;border-radius:50%;animation:koopo-spin 0.8s linear infinite;}
+@keyframes koopo-spin{to{transform:rotate(360deg);}}
+
+/* Smooth Animations */
+.koopo-stories__viewer{opacity:0;transform:scale(0.95);transition:opacity 0.3s ease, transform 0.3s ease;transform-style:preserve-3d;}
+.koopo-stories__viewer.is-open{opacity:1;transform:scale(1);}
+.koopo-stories__viewer.is-closing{opacity:0;transform:scale(0.95);}
+
+/* Story transition animations - 3D flip for whole viewer */
+.koopo-stories__viewer.flipping-out{animation:koopo-flip-out 0.2s ease-in-out forwards;}
+.koopo-stories__viewer.flipping-in{animation:koopo-flip-in 0.2s ease-in-out forwards;}
+
+@keyframes koopo-flip-out{
+  0%{transform:perspective(1200px) rotateY(0deg) scale(1);opacity:1;}
+  100%{transform:perspective(1200px) rotateY(-90deg) scale(0.9);opacity:0.3;}
+}
+
+@keyframes koopo-flip-in{
+  0%{transform:perspective(1200px) rotateY(90deg) scale(0.9);opacity:0.3;}
+  100%{transform:perspective(1200px) rotateY(0deg) scale(1);opacity:1;}
+}
+
+/* Story item transition animations */
+.koopo-stories__stage{transition:opacity 0.2s ease;}
+.koopo-stories__stage.transitioning{opacity:0;}
+
+/* Bottom bar animations */
+.koopo-stories__bottom{padding:16px;display:flex;gap:12px;justify-content:center;align-items:center;transition:opacity 0.2s ease;}
+.koopo-stories__bottom.paused{opacity:0.6;}
+
+/* Sticker animations */
+.koopo-stories__sticker{animation:koopo-sticker-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);}
+@keyframes koopo-sticker-pop{
+  0%{transform:translate(-50%,-50%) scale(0);opacity:0;}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:1;}
+}
+
+/* Interaction overlay */
+.koopo-stories__interaction-overlay{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:100;display:none;align-items:center;justify-content:center;}
+.koopo-stories__interaction-overlay.active{display:flex;}
+.koopo-stories__header .emoji {
+    border-radius: 0;
+    padding: 5px;
+}

@@ -56,6 +56,11 @@ final class Koopo_Stories_Module {
         // Note: Database table installation is handled by the activation hook in koopo.php
         // to ensure proper loading order and avoid issues with nested activation hooks
 
+        // Ensure database tables exist (fallback for existing installations)
+        if ( method_exists( $this, 'maybe_create_tables' ) ) {
+            $this->maybe_create_tables();
+        }
+
         // Cron cleanup (only when enabled)
         if ( $enabled ) {
             add_action('koopo_stories_cleanup', [ 'Koopo_Stories_Cleanup', 'run' ]);
@@ -76,6 +81,25 @@ final class Koopo_Stories_Module {
 
         // Assets registration
         add_action('wp_enqueue_scripts', [ $this, 'register_assets' ]);
+    }
+
+    public function maybe_create_tables() : void {
+        global $wpdb;
+
+        // Check if stickers table exists
+        $stickers_table = $wpdb->prefix . 'koopo_story_stickers';
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$stickers_table}'") === $stickers_table;
+
+        if ( ! $table_exists ) {
+            // Tables don't exist, create them
+            Koopo_Stories_Views_Table::install();
+            Koopo_Stories_Close_Friends::install();
+            Koopo_Stories_Reactions::install();
+            Koopo_Stories_Replies::install();
+            Koopo_Stories_Reports::install();
+            Koopo_Stories_Stickers::install();
+            Koopo_Stories_Stickers::install_poll_votes_table();
+        }
     }
 
     public function maybe_schedule_cleanup() : void {
@@ -157,7 +181,7 @@ final class Koopo_Stories_Module {
             echo '<h3 class="koopo-stories__title">' . esc_html($atts['title']) . '</h3>';
         }
         printf(
-            '<div class="%s" data-limit="%d" data-scope="%s" data-layout="%s" data-exclude-me="%s" data-order="%s" data-show-uploader="%s" data-show-unseen-badge="%s"></div>',
+            '<div class="%s" data-limit="%d" data-scope="%s" data-layout="%s" data-exclude-me="%s" data-order="%s" data-show-uploader="%s" data-show-unseen-badge="%s"><div class="koopo-stories__loader"><div class="koopo-stories__spinner"></div></div></div>',
             esc_attr($classes),
             esc_attr($limit),
             esc_attr($scope),
