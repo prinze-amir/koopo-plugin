@@ -15,10 +15,6 @@ add_action( 'admin_init', function() {
     register_setting( 'koopo_cat_fallback_group', 'koopo_default_cat_image' );
 });
 
-// Add to the existing admin_init hook in tweaks.php
-add_action( 'admin_init', function() {
-    register_setting( 'koopo_cat_fallback_group', 'koopo_enable_stories' ); // Existing group
-});
 
 // Render the settings page
 function koopo_cat_fallback_settings_page() {
@@ -64,17 +60,3 @@ function koopo_cat_fallback_settings_page() {
     </script>
     <?php
 }
-
-// Add this field to the settings page inside koopo_cat_fallback_settings_page()
-function koopo_append_stories_setting() {
-    ?>
-    <tr valign="top">
-        <th scope="row">Enable Stories Feature</th>
-        <td>
-            <input type="checkbox" name="koopo_enable_stories" value="1" <?php checked( 1, get_option('koopo_enable_stories'), true ); ?> />
-            <label>Check to enable Instagram-style stories on BuddyBoss feed.</label>
-        </td>
-    </tr>
-    <?php
-}
-// Note: You should manually place the HTML above inside the table in koopo_cat_fallback_settings_page() in tweaks.php
