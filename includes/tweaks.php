@@ -357,3 +357,14 @@ function delete_product_images( $post_id )
         }
     }
 }
+
+add_filter( 'option_dokan_selling', function ( $value ) {
+    if ( ! is_array( $value ) ) {
+        return $value;
+    }
+
+    $value['shipping_fee_recipient']     = 'seller';
+    $value['shipping_tax_fee_recipient'] = 'seller';
+
+    return $value;
+} );

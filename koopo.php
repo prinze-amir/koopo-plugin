@@ -3,7 +3,7 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.1
+ * Version: 2.20
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
