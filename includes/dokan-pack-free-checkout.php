@@ -46,7 +46,7 @@ add_action( 'template_redirect', function () {
 
     $cart->empty_cart();
 
-    $redirect = wp_get_referer() ?: home_url( '/' );
+    $redirect = home_url( '/seller-dashboard/new/#/subscription?tab=packs' );
     wp_safe_redirect( $redirect );
     exit;
 } );
