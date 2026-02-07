@@ -4,6 +4,67 @@
 add_shortcode( 'bb_author_profile_button', 'koopo_bb_author_profile_button_shortcode' );
 add_shortcode('mobile-footer-menu', 'add_mobile_footer');
 add_shortcode( 'fav-products', 'get_user_fav_products');
+add_shortcode( 'joinTheSquare', 'koopo_join_the_square_shortcode' );
+
+add_action( 'init', 'koopo_handle_join_the_square' );
+
+function koopo_user_has_influencer_access( $user ) {
+    if ( ! $user || ! $user->exists() ) {
+        return false;
+    }
+
+    $roles = (array) $user->roles;
+    if ( in_array( 'influencer', $roles, true ) ) {
+        return true;
+    }
+
+    $role = get_role( 'influencer' );
+    if ( ! $role ) {
+        return false;
+    }
+
+    $caps = array_keys( array_filter( (array) $role->capabilities ) );
+    if ( empty( $caps ) ) {
+        return false;
+    }
+
+    foreach ( $caps as $cap ) {
+        if ( ! $user->has_cap( $cap ) ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function koopo_handle_join_the_square() {
+    if ( ! is_user_logged_in() ) {
+        return;
+    }
+
+    if ( empty( $_POST['koopo_join_the_square'] ) ) {
+        return;
+    }
+
+    if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( $_POST['_wpnonce'], 'koopo_join_the_square' ) ) {
+        return;
+    }
+
+    $user = wp_get_current_user();
+    if ( koopo_user_has_influencer_access( $user ) ) {
+        $redirect = wp_get_referer() ?: home_url( '/' );
+        wp_safe_redirect( $redirect );
+        exit;
+    }
+
+    if ( get_role( 'influencer' ) ) {
+        $user->add_role( 'influencer' );
+    }
+
+    $redirect = wp_get_referer() ?: home_url( '/' );
+    wp_safe_redirect( $redirect );
+    exit;
+}
 
 /**
  * BuddyBoss Author Profile Button Shortcode
@@ -139,5 +200,29 @@ function get_user_fav_products(){
     return $view;
 }
 
+function koopo_join_the_square_shortcode( $atts ) {
+    if ( ! is_user_logged_in() ) {
+        return '';
+    }
+
+    $user = wp_get_current_user();
+    if ( koopo_user_has_influencer_access( $user ) ) {
+        return '';
+    }
+
+    if ( ! get_role( 'influencer' ) ) {
+        return '';
+    }
+
+    ob_start();
+    ?>
+    <form method="post">
+        <?php wp_nonce_field( 'koopo_join_the_square' ); ?>
+        <input type="hidden" name="koopo_join_the_square" value="1" />
+        <button type="submit" class="button">Join The Square</button>
+    </form>
+    <?php
+    return ob_get_clean();
+}
 
 ?>
