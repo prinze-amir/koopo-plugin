@@ -216,6 +216,7 @@ function koopo_join_the_square_shortcode( $atts ) {
         ?>
         <style>
             .koopo-join-square { display: inline-block; }
+            .koopo-join-square [hidden] { display: none !important; }
             .koopo-join-square .button { display: inline-flex; align-items: center; gap: 8px; }
             .koopo-join-square .koopo-icon { width: 16px; height: 16px; display: inline-block; }
             .koopo-join-square-modal { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; z-index: 9999; }
@@ -227,6 +228,18 @@ function koopo_join_the_square_shortcode( $atts ) {
             .koopo-join-square-close { background: transparent; border: 0; font-size: 22px; line-height: 1; position: absolute; top: 12px; right: 16px; cursor: pointer; }
             .koopo-join-square-wrap { position: relative; }
             .koopo-join-square-welcome { display: inline-flex; align-items: center; gap: 20px; color:#fff}
+            .koopo-join-square-btn.koopo-animate-out { animation: koopoJoinSquareFadeOut 0.25s ease forwards; }
+            .koopo-join-square-welcome.koopo-animate-in { animation: koopoJoinSquareFadeIn 0.35s ease forwards; }
+
+            @keyframes koopoJoinSquareFadeOut {
+                from { opacity: 1; transform: translateY(0); }
+                to { opacity: 0; transform: translateY(-6px); }
+            }
+
+            @keyframes koopoJoinSquareFadeIn {
+                from { opacity: 0; transform: translateY(8px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
         </style>
         <script>
             (function () {
@@ -275,9 +288,14 @@ function koopo_join_the_square_shortcode( $atts ) {
                         .then(function (res) { return res.json(); })
                         .then(function (data) {
                             if (data && data.success) {
-                                joinBtn.style.display = 'none';
+                                joinBtn.classList.add('koopo-animate-out');
+                                setTimeout(function () {
+                                    joinBtn.setAttribute('hidden', 'hidden');
+                                }, 250);
+
                                 if (welcome) {
                                     welcome.removeAttribute('hidden');
+                                    welcome.classList.add('koopo-animate-in');
                                 }
                                 openModal(modal);
                             }
@@ -310,7 +328,7 @@ function koopo_join_the_square_shortcode( $atts ) {
     ?>
     <div class="koopo-join-square" data-ajax-url="<?php echo esc_url( $ajax_url ); ?>" data-nonce="<?php echo esc_attr( $nonce ); ?>">
         <div class="koopo-join-square-wrap">
-            <button type="button" class="button koopo-join-square-btn" <?php echo $has_access ? 'style="display:none;"' : ''; ?>>
+            <button type="button" class="button koopo-join-square-btn" <?php echo $has_access ? 'hidden="hidden"' : ''; ?>>
                 <span class="koopo-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" focusable="false" aria-hidden="true">
                         <path d="M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.2 6.8 3.7L12 11.6 5.2 7.9 12 4.2zm-7 5.1 6 3.3v7.2l-6-3.3V9.3zm8 10.5v-7.2l6-3.3v7.2l-6 3.3z"></path>
