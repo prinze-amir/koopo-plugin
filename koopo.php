@@ -3,7 +3,7 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.21
+ * Version: 2.29
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
@@ -47,6 +47,10 @@ if ( file_exists( plugin_dir_path(__FILE__) . 'includes/koopo-shortcodes.php' ) 
 }
 if ( file_exists( plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php' ) ) {
     require_once plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php';
+}
+// Koopo Dokan upgrade modal integration
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php' ) ) {
+	require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php';
 }
 
 // GeoDirectory Location Manager: restrict footer modal/script to GeoDirectory archive/search pages only.
