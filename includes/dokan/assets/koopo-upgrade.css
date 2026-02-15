@@ -21,3 +21,28 @@
 #koopo-card-errors { color: #fa755a; margin-bottom: 12px; font-size: 13px; }
 #koopo-breakdown span { position:absolute; right:25px}
 #koopo-breakdown strong { position:absolute; right:25px}
+#tab-panel-0-packs {background-color:transparent;border-radius:0px;}
+#tab-panel-0-orders {background-color:transparent;border-radius:0px;}
+.components-flex {
+    gap: 5px;
+}
+.components-flex button {
+    background-color: transparent;
+    border: solid 1px #eee;
+}
+#koopo-upgrade-tab-btn {    
+    right: 25px;
+    position: absolute;
+    background-color: #28c378;
+    color: #fff;
+    font-weight: 700;
+    padding: 10px 20px;
+    font-size:17px;
+}
+#koopo-upgrade-tab-btn:hover {    
+    
+    background-color: #168c4d;
+    color: #fff;
+    padding: 12px 22px;
+    font-size:17px;
+}

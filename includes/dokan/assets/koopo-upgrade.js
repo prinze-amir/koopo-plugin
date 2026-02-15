@@ -118,11 +118,12 @@
         <div id="koopo-payment-element"></div>
         <div id="koopo-card-errors" role="alert" style="color: #dc3545; margin-top: 10px;"></div>
       </div>
-      <div class="koopo-step-actions">
-        <button id="koopo-step2-back" class="button" type="button">Back</button>
-        <button id="koopo-step2-pay" class="button button-primary" type="button">Pay Now</button>
-      </div>
-    </div>
+		      <div class="koopo-step-actions">
+		        <button id="koopo-step2-back" class="button" type="button">Back</button>
+		        <span id="koopo-step2-pay-loading" style="display:none; margin-left:8px; color:#666; font-size:13px;">Loading secure payment form...</span>
+		        <button id="koopo-step2-pay" class="button button-primary" type="button" style="display:none;" disabled>Pay Now</button>
+		      </div>
+		    </div>
     <div id="koopo-step-3" class="koopo-step" style="display:none;">
       <h3>Processing Payment...</h3>
       <div style="text-align: center; padding: 20px;">
@@ -163,6 +164,8 @@
         $('#koopo-card-errors').empty();
         $('#koopo-result').empty();
         $('#koopo-spinner').hide();
+        hidePayButtonUntilReady();
+        hidePayLoadingIndicator();
     }
 
     // Open modal on button click
@@ -189,6 +192,20 @@
     let elements = null;
     let paymentElement = null;
     let clientSecret = null;
+
+    function hidePayButtonUntilReady() {
+        $('#koopo-step2-pay-loading').show();
+        $('#koopo-step2-pay').hide().prop('disabled', true).text('Pay Now');
+    }
+
+    function hidePayLoadingIndicator() {
+        $('#koopo-step2-pay-loading').hide();
+    }
+
+    function showPayButtonReady() {
+        hidePayLoadingIndicator();
+        $('#koopo-step2-pay').show().prop('disabled', false).text('Pay Now');
+    }
 
     function loadPacks(){
         $('#koopo-pack-list').text('Loading plans...');
@@ -241,6 +258,7 @@
         if ( ! selectedPackId ) return;
         $('#koopo-step-1').hide();
         $('#koopo-step-2').show();
+        hidePayButtonUntilReady();
         $('#koopo-breakdown').html('Calculating...');
         fetch( KoopoUpgradeData.restUrl + '/calc', {
             method: 'POST',
@@ -248,6 +266,7 @@
             body: JSON.stringify({ vendor_id: KoopoUpgradeData.currentUserId, new_pack_id: selectedPackId })
         }).then(r => r.json()).then(resp => {
             if ( ! resp.success ) {
+                hidePayLoadingIndicator();
                 $('#koopo-breakdown').text('Error: ' + (resp.message || 'calculation failed'));
                 return;
             }
@@ -270,6 +289,7 @@
                 })
             }).then(r => r.json()).then(payResp => {
                 if ( ! payResp.success ) {
+                    hidePayLoadingIndicator();
                     $('#koopo-breakdown').append('<p style="color:red;">Error: ' + (payResp.message || 'payment creation failed') + '</p>');
                     return;
                 }
@@ -289,13 +309,16 @@
                 if ( clientSecret ) {
                     loadStripeAndInit();
                 } else {
+                    hidePayLoadingIndicator();
                     $('#koopo-breakdown').append('<p style="color:red;">Error: Payment could not be initialized. Please try again.</p>');
                 }
             }).catch(err => {
+                hidePayLoadingIndicator();
                 $('#koopo-breakdown').append('<p style="color:red;">Payment creation failed.</p>');
                 console.error(err);
             });
         }).catch(err => {
+            hidePayLoadingIndicator();
             $('#koopo-breakdown').text('Calculation failed.');
             console.error(err);
         });
@@ -315,12 +338,13 @@
     function initStripe(){
         const pubKey = KoopoUpgradeData.stripePublishableKey;
         if ( ! pubKey ) {
+            hidePayLoadingIndicator();
             $('#koopo-payment-element').html('<p style="color:red;">Error: Stripe publishable key not configured. Please contact support.</p>');
             return;
         }
 
-        // Keep Pay button disabled until the Payment Element is ready
-        $('#koopo-step2-pay').prop('disabled', true).text('Loading payment form...');
+        // Keep Pay button hidden until the Payment Element is ready.
+        hidePayButtonUntilReady();
 
         stripe = Stripe(pubKey);
         elements = stripe.elements({ clientSecret: clientSecret });
@@ -330,13 +354,13 @@
         paymentElement.mount('#koopo-payment-element');
 
         paymentElement.on('ready', function() {
-            $('#koopo-step2-pay').prop('disabled', false).text('Pay Now');
+            showPayButtonReady();
         });
     }
 
     $('#koopo-step2-pay').on('click', function(){
         if ( ! stripe || ! elements ) {
-            $('#koopo-card-errors').text('Stripe not initialized. Please refresh and try again.');
+            $('#koopo-card-errors').text('Payment form is still loading. Please wait a moment.');
             return;
         }
 

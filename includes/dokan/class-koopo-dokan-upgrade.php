@@ -549,15 +549,24 @@ class Koopo_Dokan_Upgrade {
                     }
                 }
 
+                // Upgrade flow should not leave vendor in trial state.
+                $this->clear_trial_state( $vendor_id );
+
                 // Create Stripe Subscription for future recurring billing
                 $is_recurring = 'yes' === get_post_meta( $new_pack_id, '_enable_recurring_payment', true );
+                $stripe_subscription_created = true;
                 if ( $new_pack_id > 0 && $is_recurring ) {
-                    $this->create_stripe_subscription( $vendor_id, $new_pack_id, $order );
+                    $stripe_subscription = $this->create_stripe_subscription( $vendor_id, $new_pack_id, $order );
+                    $stripe_subscription_created = ! empty( $stripe_subscription['success'] );
+
+                    if ( ! $stripe_subscription_created ) {
+                        error_log( 'Koopo Upgrade ($0 path): new Stripe subscription creation failed. Skipping old subscription cancellation.' );
+                    }
                 }
 
                 // Cancel old Stripe subscription — break webhook lookup chain first
                 // (see rest_finalize() for detailed explanation of why this is needed)
-                if ( ! empty( $previous_order_id ) && intval( $previous_order_id ) !== intval( $order->get_id() ) ) {
+                if ( $stripe_subscription_created && ! empty( $previous_order_id ) && intval( $previous_order_id ) !== intval( $order->get_id() ) ) {
                     $old_order = wc_get_order( intval( $previous_order_id ) );
 
                     if ( ! empty( $old_stripe_sub_id ) ) {
@@ -601,6 +610,7 @@ class Koopo_Dokan_Upgrade {
                         'order_id' => $order->get_id(),
                         'first_payment' => $amount,
                         'activation_method' => $activation_method,
+                        'stripe_subscription_created' => $stripe_subscription_created,
                     ],
                 ]);
             }
@@ -817,12 +827,21 @@ class Koopo_Dokan_Upgrade {
                 }
             }
 
+            // Upgrade flow should not leave vendor in trial state.
+            $this->clear_trial_state( $vendor_id );
+
             // Create Stripe Subscription for recurring billing.
             // The one-time PaymentIntent covered the prorated amount; the Stripe
             // Subscription handles future recurring charges.
             $is_recurring = 'yes' === get_post_meta( $new_pack_id, '_enable_recurring_payment', true );
+            $stripe_subscription_created = true;
             if ( $new_pack_id > 0 && $is_recurring ) {
-                $this->create_stripe_subscription( $vendor_id, $new_pack_id, $order );
+                $stripe_subscription = $this->create_stripe_subscription( $vendor_id, $new_pack_id, $order );
+                $stripe_subscription_created = ! empty( $stripe_subscription['success'] );
+
+                if ( ! $stripe_subscription_created ) {
+                    error_log( 'Koopo Upgrade: new Stripe subscription creation failed. Skipping old subscription cancellation.' );
+                }
             }
 
             // Cancel old Stripe subscription directly using the saved ID.
@@ -834,7 +853,7 @@ class Koopo_Dokan_Upgrade {
             //   3. Falls back to Stripe subscription metadata['order_id']
             // If it finds the vendor, it deletes ALL subscription data (including the NEW sub).
             // We prevent this by clearing the old order meta and Stripe metadata first.
-            if ( ! empty( $previous_order_id ) && intval( $previous_order_id ) !== intval( $order_id ) ) {
+            if ( $stripe_subscription_created && ! empty( $previous_order_id ) && intval( $previous_order_id ) !== intval( $order_id ) ) {
                 $old_order = wc_get_order( intval( $previous_order_id ) );
 
                 if ( ! empty( $old_stripe_sub_id ) ) {
@@ -889,6 +908,7 @@ class Koopo_Dokan_Upgrade {
                     'order_id' => $order_id,
                     'status' => 'completed',
                     'activation_method' => $activation_method,
+                    'stripe_subscription_created' => $stripe_subscription_created,
                 ],
             ]);
 
@@ -908,7 +928,10 @@ class Koopo_Dokan_Upgrade {
             $secret = $this->get_stripe_secret_key();
             if ( empty( $secret ) ) {
                 error_log( 'Koopo Upgrade: cannot create Stripe sub - no secret key' );
-                return;
+                return [
+                    'success' => false,
+                    'message' => 'No Stripe secret key configured',
+                ];
             }
 
             $stripe = new \Stripe\StripeClient( $secret );
@@ -960,7 +983,10 @@ class Koopo_Dokan_Upgrade {
 
             if ( $price <= 0 || empty( $period ) ) {
                 error_log( "Koopo Upgrade: skipping Stripe sub - price={$price}, period={$period}" );
-                return;
+                return [
+                    'success' => false,
+                    'message' => 'Pack is not eligible for recurring Stripe subscription',
+                ];
             }
 
             $amount_cents = intval( round( $price * 100 ) );
@@ -985,12 +1011,12 @@ class Koopo_Dokan_Upgrade {
                 $price_data['product_data'] = [ 'name' => $prod_name ];
             }
 
-            // Defer first charge by one billing period since the prorated
-            // amount already covers the current period.
-            $trial_dt = new \DateTime( 'now', wp_timezone() );
+            // Defer first charge by one billing period (without trial mode),
+            // because the prorated one-time charge already covered this period.
+            $anchor_dt = new \DateTime( 'now', wp_timezone() );
             $add_s    = $interval > 1 ? 's' : '';
-            $trial_dt->modify( "+{$interval} {$period}{$add_s}" );
-            $trial_end = $trial_dt->getTimestamp();
+            $anchor_dt->modify( "+{$interval} {$period}{$add_s}" );
+            $billing_cycle_anchor = $anchor_dt->getTimestamp();
 
             // Get the default payment method from the customer's most recent PI
             $default_pm = null;
@@ -1005,10 +1031,11 @@ class Koopo_Dokan_Upgrade {
             }
 
             $sub_args = [
-                'customer'  => $customer_id,
-                'items'     => [ [ 'price_data' => $price_data ] ],
-                'trial_end' => $trial_end,
-                'metadata'  => [
+                'customer'             => $customer_id,
+                'items'                => [ [ 'price_data' => $price_data ] ],
+                'billing_cycle_anchor' => $billing_cycle_anchor,
+                'proration_behavior'   => 'none',
+                'metadata'             => [
                     'koopo_upgrade' => '1',
                     'vendor_id'     => $vendor_id,
                     'pack_id'       => $pack_id,
@@ -1023,14 +1050,37 @@ class Koopo_Dokan_Upgrade {
             $stripe_sub = $stripe->subscriptions->create( $sub_args );
             error_log( "Koopo Upgrade: Stripe Subscription created: {$stripe_sub->id}" );
 
-            // Store the new subscription ID in the same meta keys Dokan uses
-            update_user_meta( $vendor_id, '_dokan_stripe_express_subscription_id', $stripe_sub->id );
-            $order->update_meta_data( '_dokan_stripe_express_stripe_subscription_id', $stripe_sub->id );
-            $order->update_meta_data( '_dokan_stripe_express_vendor_subscription_order', 'yes' );
+            // Store the new subscription ID in the same meta keys Dokan uses.
+            // Include debug key so webhook vendor lookup always follows the new sub ID.
+            if ( class_exists( '\WeDevs\DokanPro\Modules\StripeExpress\Support\UserMeta' ) ) {
+                \WeDevs\DokanPro\Modules\StripeExpress\Support\UserMeta::update_stripe_subscription_id( $vendor_id, $stripe_sub->id );
+                \WeDevs\DokanPro\Modules\StripeExpress\Support\UserMeta::update_stripe_debug_subscription_id( $vendor_id, $stripe_sub->id );
+            } else {
+                update_user_meta( $vendor_id, '_dokan_stripe_express_subscription_id', $stripe_sub->id );
+                update_user_meta( $vendor_id, '_dokan_stripe_express_debug_subscription_id', $stripe_sub->id );
+            }
+
+            if ( class_exists( '\WeDevs\DokanPro\Modules\StripeExpress\Support\OrderMeta' ) ) {
+                \WeDevs\DokanPro\Modules\StripeExpress\Support\OrderMeta::update_stripe_subscription_id( $order, $stripe_sub->id );
+                \WeDevs\DokanPro\Modules\StripeExpress\Support\OrderMeta::update_vendor_subscription_order( $order, 'yes' );
+            } else {
+                $order->update_meta_data( '_dokan_stripe_express_stripe_subscription_id', $stripe_sub->id );
+                $order->update_meta_data( '_dokan_stripe_express_vendor_subscription_order', 'yes' );
+            }
+
             $order->save();
+
+            return [
+                'success' => true,
+                'subscription_id' => $stripe_sub->id,
+            ];
 
         } catch ( \Throwable $e ) {
             error_log( 'Koopo Upgrade: FAILED to create Stripe Subscription: ' . $e->getMessage() );
+            return [
+                'success' => false,
+                'message' => $e->getMessage(),
+            ];
         }
     }
 
@@ -1110,5 +1160,18 @@ class Koopo_Dokan_Upgrade {
         do_action( 'dokan_vendor_purchased_subscription', $vendor_id );
 
         error_log( "Koopo Upgrade: Manual subscription activation complete for vendor {$vendor_id}. End date: {$end_date}" );
+    }
+
+    /**
+     * Ensure upgrade flow does not retain Dokan trial flags from pack config.
+     */
+    private function clear_trial_state( $vendor_id ) {
+        if ( class_exists( '\DokanPro\Modules\Subscription\Helper' ) && method_exists( '\DokanPro\Modules\Subscription\Helper', 'delete_trial_meta_data' ) ) {
+            \DokanPro\Modules\Subscription\Helper::delete_trial_meta_data( $vendor_id );
+            return;
+        }
+
+        delete_user_meta( $vendor_id, '_dokan_subscription_is_on_trial' );
+        delete_user_meta( $vendor_id, '_dokan_subscription_trial_until' );
     }
 }
