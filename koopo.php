@@ -3,7 +3,7 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.30
+ * Version: 2.31
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
@@ -47,6 +47,9 @@ if ( file_exists( plugin_dir_path(__FILE__) . 'includes/koopo-shortcodes.php' ) 
 }
 if ( file_exists( plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php' ) ) {
     require_once plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php';
+}
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-pack-auto-assign.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-pack-auto-assign.php';
 }
 // Koopo Dokan upgrade modal integration
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php' ) ) {
@@ -134,4 +137,3 @@ function kb_include_video_templates( $template_path ) {
 
 	return $template_path;
 }
-

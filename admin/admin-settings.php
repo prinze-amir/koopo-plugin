@@ -13,6 +13,9 @@ add_action( 'admin_menu', function() {
 
 add_action( 'admin_init', function() {
     register_setting( 'koopo_cat_fallback_group', 'koopo_default_cat_image' );
+    register_setting( 'koopo_cat_fallback_group', 'koopo_vendor_starter_pack_id', [
+        'sanitize_callback' => 'absint',
+    ] );
 });
 
 
@@ -29,6 +32,13 @@ function koopo_cat_fallback_settings_page() {
                     <td>
                         <input type="text" id="koopo_default_cat_image" name="koopo_default_cat_image" value="<?php echo esc_attr( get_option('koopo_default_cat_image') ); ?>" style="width: 60%;" />
                         <input type="button" class="button" id="upload_default_image" value="Upload Image" />
+                    </td>
+                </tr>
+                <tr valign="top">
+                    <th scope="row">Vendor Starter Pack ID</th>
+                    <td>
+                        <input type="number" min="0" id="koopo_vendor_starter_pack_id" name="koopo_vendor_starter_pack_id" value="<?php echo esc_attr( get_option( 'koopo_vendor_starter_pack_id', 0 ) ); ?>" style="width: 120px;" />
+                        <p class="description">Dokan product pack ID to auto-assign to new vendors. Leave as 0 to auto-detect the first free product pack.</p>
                     </td>
                 </tr>
             </table>
