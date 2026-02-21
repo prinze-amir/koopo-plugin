@@ -51,6 +51,9 @@ if ( file_exists( plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-pack-auto-assign.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-pack-auto-assign.php';
 }
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php';
+}
 // Koopo Dokan upgrade modal integration
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php' ) ) {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php';
