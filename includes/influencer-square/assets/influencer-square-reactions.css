@@ -42,6 +42,7 @@
 .koopo-is-btn.is-active {
     border-color: #ffba12;
     background: #000;
+    color:#ffff;
 }
 
 .koopo-is-btn[disabled] {

@@ -9,8 +9,9 @@
     background: linear-gradient(180deg, #ffffff 0%, var(--koopo-bg) 100%);
     border: 1px solid var(--koopo-border);
     border-radius: 16px;
-    padding: 16px;
+    padding: 26px;
     color: var(--koopo-text);
+    box-shadow: 1px 3px 11px #eee;
 }
 
 .koopo-is-dashboard__hero h2 {
