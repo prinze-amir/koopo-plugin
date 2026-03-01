@@ -1,0 +1,69 @@
+.koopo-is-reactions {
+    margin: 20px 0;
+    padding: 14px;
+    border: 1px solid #d7dce4;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f5f8ff 100%);
+}
+
+.koopo-is-reactions__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #20232a;
+    margin-bottom: 10px;
+}
+
+.koopo-is-reactions__buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.koopo-is-reactions__buttons .koopo-is-btn {
+    border: 1px solid #cfd5e2;
+    border-radius: 999px;
+    background: #fff;
+    color: #253247;
+    font-size: 14px;
+    padding: 8px 14px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.koopo-is-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(17, 41, 73, .12);
+}
+
+.koopo-is-btn.is-active {
+    border-color: #ffba12;
+    background: #000;
+}
+
+.koopo-is-btn[disabled] {
+    opacity: .7;
+    cursor: not-allowed;
+}
+
+.koopo-is-count {
+    min-width: 22px;
+    text-align: right;
+    font-weight: 600;
+}
+
+@media (max-width: 480px) {
+    .koopo-is-reactions {
+        margin: 16px 0;
+        padding: 12px;
+    }
+
+    .koopo-is-btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+

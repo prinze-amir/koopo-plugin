@@ -1,0 +1,160 @@
+.koopo-is-dashboard {
+    --koopo-bg: #f7f9fc;
+    --koopo-panel: #ffffff;
+    --koopo-text: #18212f;
+    --koopo-muted: #5b6574;
+    --koopo-border: #d8deea;
+    --koopo-accent: #0a63d9;
+    --koopo-money: #0a8f49;
+    background: linear-gradient(180deg, #ffffff 0%, var(--koopo-bg) 100%);
+    border: 1px solid var(--koopo-border);
+    border-radius: 16px;
+    padding: 16px;
+    color: var(--koopo-text);
+}
+
+.koopo-is-dashboard__hero h2 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.koopo-is-dashboard__hero p {
+    margin: 0;
+    color: var(--koopo-muted);
+}
+
+.koopo-is-dashboard__cards {
+    margin-top: 14px;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.koopo-is-dashboard__card {
+    background: var(--koopo-panel);
+    border: 1px solid var(--koopo-border);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.koopo-is-dashboard__card h3 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    color: var(--koopo-muted);
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+.koopo-is-dashboard__card strong {
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.koopo-is-dashboard__card--money strong,
+.koopo-is-dashboard__money {
+    color: var(--koopo-money);
+    font-weight: 700;
+}
+
+.koopo-is-dashboard__meta {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--koopo-muted);
+}
+
+.koopo-is-dashboard__admin-earnings {
+    margin-top: 14px;
+    border: 1px solid var(--koopo-border);
+    border-radius: 12px;
+    padding: 12px;
+    background: #fff;
+}
+
+.koopo-is-dashboard__admin-earnings h3 {
+    margin: 0 0 6px;
+    font-size: 16px;
+}
+
+.koopo-is-dashboard__admin-earnings p {
+    margin: 0;
+    color: var(--koopo-muted);
+}
+
+.koopo-is-dashboard__admin-amount {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--koopo-money);
+}
+
+.koopo-is-dashboard__table-wrap {
+    margin-top: 14px;
+    overflow-x: auto;
+    border: 1px solid var(--koopo-border);
+    border-radius: 12px;
+    background: var(--koopo-panel);
+}
+
+.koopo-is-dashboard__table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 720px;
+}
+
+.koopo-is-dashboard__table th,
+.koopo-is-dashboard__table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #edf0f6;
+    text-align: left;
+    font-size: 14px;
+}
+
+.koopo-is-dashboard__table th {
+    background: #f2f6ff;
+    color: #1b2f4c;
+    font-weight: 600;
+}
+
+.koopo-is-dashboard__table tbody tr:hover {
+    background: #f9fbff;
+}
+
+.koopo-is-dashboard__table a {
+    color: var(--koopo-accent);
+    text-decoration: none;
+}
+
+.koopo-is-dashboard__table a:hover {
+    text-decoration: underline;
+}
+
+.koopo-is-dashboard-login,
+.koopo-is-dashboard-empty {
+    border: 1px solid #d8deea;
+    border-radius: 12px;
+    padding: 16px;
+    background: #fff;
+}
+
+@media (max-width: 640px) {
+    .koopo-is-dashboard {
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .koopo-is-dashboard__hero h2 {
+        font-size: 20px;
+    }
+
+    .koopo-is-dashboard__cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .koopo-is-dashboard__card strong {
+        font-size: 18px;
+    }
+}

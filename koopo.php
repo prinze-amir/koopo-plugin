@@ -67,6 +67,10 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/geodir-location-manage
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/registration-bridge.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/registration-bridge.php';
 }
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php';
+    Koopo_Influencer_Square::instance();
+}
 
 //add_filter( 'template_include', 'kb_include_audio_templates' );
 //add_filter( 'template_include', 'kb_include_video_templates' );
