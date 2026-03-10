@@ -318,14 +318,15 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
         private function get_available_controlled_tabs() {
             $tabs = [];
             $bp   = buddypress();
+            $fallback_tabs = $this->get_fallback_controlled_tabs();
 
             if ( empty( $bp->members ) || empty( $bp->members->nav ) ) {
-                return $this->get_fallback_controlled_tabs();
+                return $fallback_tabs;
             }
 
             $nav_items = $bp->members->nav->get_primary( [], false );
             if ( empty( $nav_items ) ) {
-                return $this->get_fallback_controlled_tabs();
+                return $fallback_tabs;
             }
 
             foreach ( $nav_items as $nav_item ) {
@@ -352,10 +353,20 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
                 $tabs[ $slug ] = $label;
             }
 
+            foreach ( $fallback_tabs as $slug => $label ) {
+                if ( $this->is_always_visible_tab( $slug ) ) {
+                    continue;
+                }
+
+                if ( ! isset( $tabs[ $slug ] ) ) {
+                    $tabs[ $slug ] = $label;
+                }
+            }
+
             asort( $tabs );
 
             if ( empty( $tabs ) ) {
-                return $this->get_fallback_controlled_tabs();
+                return $fallback_tabs;
             }
 
             return $tabs;

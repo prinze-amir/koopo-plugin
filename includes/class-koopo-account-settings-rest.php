@@ -63,6 +63,23 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
             register_rest_route(
                 self::REST_NAMESPACE,
+                '/account/notifications',
+                [
+                    [
+                        'methods'             => WP_REST_Server::READABLE,
+                        'callback'            => [ $this, 'get_notification_settings' ],
+                        'permission_callback' => [ $this, 'require_authenticated_user' ],
+                    ],
+                    [
+                        'methods'             => WP_REST_Server::EDITABLE,
+                        'callback'            => [ $this, 'update_notification_settings' ],
+                        'permission_callback' => [ $this, 'require_authenticated_user' ],
+                    ],
+                ]
+            );
+
+            register_rest_route(
+                self::REST_NAMESPACE,
                 '/account/stories',
                 [
                     'methods'             => WP_REST_Server::READABLE,
@@ -143,7 +160,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
             register_rest_route(
                 self::REST_NAMESPACE,
-                '/account/blocked-members/(?P<user_id>\d+)',
+                '/account/blocked-members/(?P<block_id>\d+)',
                 [
                     'methods'             => WP_REST_Server::DELETABLE,
                     'callback'            => [ $this, 'remove_blocked_member' ],
@@ -293,6 +310,45 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             return rest_ensure_response( $this->get_privacy_settings_payload( $user_id ) );
         }
 
+        public function get_notification_settings() {
+            return rest_ensure_response( $this->get_notification_settings_payload() );
+        }
+
+        public function update_notification_settings( WP_REST_Request $request ) {
+            $values = $request->get_param( 'values' );
+            if ( ! is_array( $values ) || empty( $values ) ) {
+                return new WP_Error( 'koopo_account_invalid_notifications', __( 'Notification values must be provided.', 'koopo' ), [ 'status' => 400 ] );
+            }
+
+            $endpoint = $this->get_buddyboss_account_settings_endpoint();
+            if ( ! $endpoint || ! method_exists( $endpoint, 'update_notifications_fields' ) ) {
+                return new WP_Error( 'koopo_account_notifications_unavailable', __( 'BuddyBoss notification settings are unavailable.', 'koopo' ), [ 'status' => 501 ] );
+            }
+
+            $normalized = [];
+            foreach ( $values as $key => $value ) {
+                $setting_key = sanitize_key( (string) $key );
+                if ( '' === $setting_key ) {
+                    continue;
+                }
+
+                $normalized[ $setting_key ] = rest_sanitize_boolean( $value ) ? 'yes' : 'no';
+            }
+
+            if ( empty( $normalized ) ) {
+                return new WP_Error( 'koopo_account_invalid_notifications', __( 'Notification values must include at least one setting.', 'koopo' ), [ 'status' => 400 ] );
+            }
+
+            $update_request = new WP_REST_Request( 'PATCH' );
+            $update_request->set_param( 'fields', $normalized );
+            $updated = $endpoint->update_notifications_fields( $update_request );
+            if ( is_wp_error( $updated ) ) {
+                return $updated;
+            }
+
+            return rest_ensure_response( $this->get_notification_settings_payload() );
+        }
+
         public function get_story_settings() {
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
         }
@@ -301,6 +357,32 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             $query = trim( (string) $request->get_param( 'query' ) );
             if ( strlen( $query ) < 2 ) {
                 return rest_ensure_response( [ 'items' => [] ] );
+            }
+
+            if ( $this->is_story_rest_available() ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Story', 'search_users' ],
+                    [
+                        'query' => $query,
+                        'limit' => 12,
+                    ],
+                    'GET'
+                );
+
+                if ( is_wp_error( $response ) ) {
+                    return $response;
+                }
+
+                $data  = $this->get_rest_response_data( $response );
+                $items = [];
+                foreach ( (array) ( $data['users'] ?? [] ) as $user ) {
+                    $summary = $this->build_member_summary( $user );
+                    if ( $summary && (int) $summary['id'] !== get_current_user_id() ) {
+                        $items[] = $summary;
+                    }
+                }
+
+                return rest_ensure_response( [ 'items' => $items ] );
             }
 
             $user_query = new WP_User_Query(
@@ -327,9 +409,20 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function add_close_friend( WP_REST_Request $request ) {
             $target_user_id = (int) $request->get_param( 'userId' );
-            $result         = $this->update_user_id_list( get_current_user_id(), self::META_CLOSE_FRIENDS, $target_user_id, 'add' );
-            if ( is_wp_error( $result ) ) {
-                return $result;
+            if ( $this->is_story_rest_available() ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Story', 'add_close_friend' ],
+                    [ 'friend_id' => $target_user_id ],
+                    'POST'
+                );
+                if ( is_wp_error( $response ) ) {
+                    return $response;
+                }
+            } else {
+                $result = $this->update_user_id_list( get_current_user_id(), self::META_CLOSE_FRIENDS, $target_user_id, 'add' );
+                if ( is_wp_error( $result ) ) {
+                    return $result;
+                }
             }
 
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
@@ -337,9 +430,20 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function remove_close_friend( WP_REST_Request $request ) {
             $target_user_id = (int) $request->get_param( 'user_id' );
-            $result         = $this->update_user_id_list( get_current_user_id(), self::META_CLOSE_FRIENDS, $target_user_id, 'remove' );
-            if ( is_wp_error( $result ) ) {
-                return $result;
+            if ( $this->is_story_rest_available() ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Story', 'remove_close_friend' ],
+                    [ 'friend_id' => $target_user_id ],
+                    'DELETE'
+                );
+                if ( is_wp_error( $response ) ) {
+                    return $response;
+                }
+            } else {
+                $result = $this->update_user_id_list( get_current_user_id(), self::META_CLOSE_FRIENDS, $target_user_id, 'remove' );
+                if ( is_wp_error( $result ) ) {
+                    return $result;
+                }
             }
 
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
@@ -347,9 +451,20 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function add_hidden_author( WP_REST_Request $request ) {
             $target_user_id = (int) $request->get_param( 'userId' );
-            $result         = $this->update_user_id_list( get_current_user_id(), self::META_HIDDEN_STORY_USERS, $target_user_id, 'add' );
-            if ( is_wp_error( $result ) ) {
-                return $result;
+            if ( $this->is_story_rest_available() ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Story', 'add_hidden_all_user' ],
+                    [ 'user_id' => $target_user_id ],
+                    'POST'
+                );
+                if ( is_wp_error( $response ) ) {
+                    return $response;
+                }
+            } else {
+                $result = $this->update_user_id_list( get_current_user_id(), self::META_HIDDEN_STORY_USERS, $target_user_id, 'add' );
+                if ( is_wp_error( $result ) ) {
+                    return $result;
+                }
             }
 
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
@@ -357,9 +472,20 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function remove_hidden_author( WP_REST_Request $request ) {
             $target_user_id = (int) $request->get_param( 'user_id' );
-            $result         = $this->update_user_id_list( get_current_user_id(), self::META_HIDDEN_STORY_USERS, $target_user_id, 'remove' );
-            if ( is_wp_error( $result ) ) {
-                return $result;
+            if ( $this->is_story_rest_available() ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Story', 'remove_hidden_all_user' ],
+                    [ 'user_id' => $target_user_id ],
+                    'DELETE'
+                );
+                if ( is_wp_error( $response ) ) {
+                    return $response;
+                }
+            } else {
+                $result = $this->update_user_id_list( get_current_user_id(), self::META_HIDDEN_STORY_USERS, $target_user_id, 'remove' );
+                if ( is_wp_error( $result ) ) {
+                    return $result;
+                }
             }
 
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
@@ -374,10 +500,29 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         }
 
         public function remove_blocked_member( WP_REST_Request $request ) {
-            $target_user_id = (int) $request->get_param( 'user_id' );
-            $result         = $this->update_user_id_list( get_current_user_id(), self::META_BLOCKED_MEMBERS, $target_user_id, 'remove' );
-            if ( is_wp_error( $result ) ) {
-                return $result;
+            $block_id = (int) $request->get_param( 'block_id' );
+
+            if ( $this->is_moderation_blocking_available() ) {
+                $moderation = $this->get_blocked_moderation( $block_id );
+                if ( ! $moderation || empty( $moderation->item_id ) || empty( $moderation->item_type ) ) {
+                    return new WP_Error( 'koopo_account_block_missing', __( 'The selected block could not be found.', 'koopo' ), [ 'status' => 404 ] );
+                }
+
+                $deleted = bp_moderation_delete(
+                    [
+                        'content_id'   => (int) $moderation->item_id,
+                        'content_type' => (string) $moderation->item_type,
+                    ]
+                );
+
+                if ( empty( $deleted ) || ( is_object( $deleted ) && ! empty( $deleted->report_id ) ) ) {
+                    return new WP_Error( 'koopo_account_unblock_failed', __( 'Failed to unblock this member.', 'koopo' ), [ 'status' => 500 ] );
+                }
+            } else {
+                $result = $this->update_user_id_list( get_current_user_id(), self::META_BLOCKED_MEMBERS, $block_id, 'remove' );
+                if ( is_wp_error( $result ) ) {
+                    return $result;
+                }
             }
 
             return rest_ensure_response( $this->get_blocked_members_payload( get_current_user_id() ) );
@@ -496,7 +641,49 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             ];
         }
 
+        private function get_notification_settings_payload() {
+            $endpoint = $this->get_buddyboss_account_settings_endpoint();
+            if ( ! $endpoint || ! method_exists( $endpoint, 'get_notifications_fields' ) ) {
+                return [
+                    'masterControls' => [],
+                    'groups'         => [],
+                ];
+            }
+
+            $fields = $endpoint->get_notifications_fields();
+            return $this->normalize_notification_fields_payload( $fields );
+        }
+
         private function get_story_settings_payload( $user_id ) {
+            if ( $this->is_story_rest_available() ) {
+                $close_friends_response = $this->call_story_rest_handler( [ 'Koopo_Stories_REST_Story', 'get_close_friends' ] );
+                $hidden_users_response  = $this->call_story_rest_handler( [ 'Koopo_Stories_REST_Story', 'get_hidden_all_users' ] );
+
+                $close_friends_data = is_wp_error( $close_friends_response ) ? [] : $this->get_rest_response_data( $close_friends_response );
+                $hidden_users_data  = is_wp_error( $hidden_users_response ) ? [] : $this->get_rest_response_data( $hidden_users_response );
+
+                $close_friends = [];
+                foreach ( (array) ( $close_friends_data['friends'] ?? [] ) as $friend ) {
+                    $summary = $this->build_member_summary( $friend );
+                    if ( $summary ) {
+                        $close_friends[] = $summary;
+                    }
+                }
+
+                $hidden_users = [];
+                foreach ( (array) ( $hidden_users_data['users'] ?? [] ) as $user ) {
+                    $summary = $this->build_member_summary( $user );
+                    if ( $summary ) {
+                        $hidden_users[] = $summary;
+                    }
+                }
+
+                return [
+                    'closeFriends'  => $close_friends,
+                    'hiddenAuthors' => $hidden_users,
+                ];
+            }
+
             return [
                 'closeFriends'  => $this->build_member_list_from_ids( $this->get_user_id_meta( $user_id, self::META_CLOSE_FRIENDS ) ),
                 'hiddenAuthors' => $this->build_member_list_from_ids( $this->get_user_id_meta( $user_id, self::META_HIDDEN_STORY_USERS ) ),
@@ -504,8 +691,57 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         }
 
         private function get_story_archive_payload( $user_id ) {
+            if ( $this->is_story_rest_available() && class_exists( 'Koopo_Stories_REST_Feed' ) ) {
+                $response = $this->call_story_rest_handler(
+                    [ 'Koopo_Stories_REST_Feed', 'get_archived_stories' ],
+                    [
+                        'limit'  => 60,
+                        'page'   => 1,
+                        'mobile' => 1,
+                    ]
+                );
+
+                if ( ! is_wp_error( $response ) ) {
+                    $data  = $this->get_rest_response_data( $response );
+                    $items = [];
+
+                    foreach ( (array) ( $data['stories'] ?? [] ) as $story_item ) {
+                        $story_id = isset( $story_item['story_id'] ) ? (int) $story_item['story_id'] : 0;
+                        $item_id  = isset( $story_item['item_id'] ) ? (int) $story_item['item_id'] : 0;
+
+                        if ( $story_id <= 0 || $item_id <= 0 ) {
+                            continue;
+                        }
+
+                        $items[] = [
+                            'storyId'      => $story_id,
+                            'itemId'       => $item_id,
+                            'author'       => $this->build_member_summary( $story_item['author'] ?? [] ),
+                            'coverThumbUrl'=> isset( $story_item['cover_thumb'] ) ? (string) $story_item['cover_thumb'] : '',
+                            'mediaUrl'     => isset( $story_item['item_src'] ) ? (string) $story_item['item_src'] : '',
+                            'mediaType'    => ( isset( $story_item['item_type'] ) && 'video' === strtolower( (string) $story_item['item_type'] ) ) ? 'video' : 'image',
+                            'createdAt'    => isset( $story_item['created_at'] ) ? (string) $story_item['created_at'] : '',
+                            'updatedAt'    => isset( $story_item['last_updated'] ) ? (string) $story_item['last_updated'] : '',
+                            'privacy'      => $this->normalize_story_privacy( $story_item['privacy'] ?? 'public' ),
+                            'viewCount'    => isset( $story_item['view_count'] ) ? (int) $story_item['view_count'] : 0,
+                            'isArchived'   => ! empty( $story_item['is_archived'] ),
+                        ];
+                    }
+
+                    return [
+                        'items'   => $items,
+                        'page'    => isset( $data['page'] ) ? max( 1, (int) $data['page'] ) : 1,
+                        'hasMore' => ! empty( $data['has_more'] ),
+                    ];
+                }
+            }
+
             if ( ! post_type_exists( 'koopo_story' ) ) {
-                return [ 'items' => [] ];
+                return [
+                    'items'   => [],
+                    'page'    => 1,
+                    'hasMore' => false,
+                ];
             }
 
             $query = new WP_Query(
@@ -530,24 +766,282 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
                 $items[] = [
                     'storyId'      => $story_id,
-                    'title'        => get_the_title( $story_id ) ?: sprintf( __( 'Story #%d', 'koopo' ), $story_id ),
+                    'itemId'       => $story_id,
+                    'author'       => $this->build_member_summary( get_userdata( $user_id ) ),
                     'coverThumbUrl'=> get_the_post_thumbnail_url( $story_id, 'large' ) ?: '',
+                    'mediaUrl'     => get_the_post_thumbnail_url( $story_id, 'full' ) ?: '',
+                    'mediaType'    => 'image',
+                    'createdAt'    => get_post_time( 'c', true, $story_post ),
                     'updatedAt'    => get_post_modified_time( 'c', true, $story_post ),
                     'privacy'      => $this->normalize_story_privacy( get_post_meta( $story_id, '_koopo_story_privacy', true ) ),
-                    'itemsCount'   => $this->get_story_items_count( $story_id ),
+                    'viewCount'    => 0,
                     'isArchived'   => true,
                 ];
             }
 
             wp_reset_postdata();
 
-            return [ 'items' => $items ];
+            return [
+                'items'   => $items,
+                'page'    => 1,
+                'hasMore' => false,
+            ];
         }
 
         private function get_blocked_members_payload( $user_id ) {
+            if ( $this->is_moderation_blocking_available() ) {
+                $moderations = bp_moderation_get(
+                    [
+                        'user_id'           => $user_id,
+                        'page'              => 1,
+                        'per_page'          => 100,
+                        'sort'              => 'DESC',
+                        'order_by'          => 'last_updated',
+                        'in_types'          => [ BP_Moderation_Members::$moderation_type ],
+                        'update_meta_cache' => false,
+                        'count_total'       => false,
+                        'display_reporters' => false,
+                        'filter'            => [
+                            'hide_sitewide' => 0,
+                        ],
+                    ]
+                );
+
+                $items = [];
+                foreach ( (array) ( $moderations['moderations'] ?? [] ) as $moderation ) {
+                    if ( empty( $moderation->item_id ) ) {
+                        continue;
+                    }
+
+                    $summary = $this->build_member_summary( get_userdata( (int) $moderation->item_id ) );
+                    if ( ! $summary ) {
+                        continue;
+                    }
+
+                    $summary['blockId'] = (int) $moderation->id;
+                    $items[]            = $summary;
+                }
+
+                return [
+                    'items' => $items,
+                ];
+            }
+
             return [
                 'items' => $this->build_member_list_from_ids( $this->get_user_id_meta( $user_id, self::META_BLOCKED_MEMBERS ) ),
             ];
+        }
+
+        private function get_buddyboss_account_settings_endpoint() {
+            if ( class_exists( 'BP_REST_Account_Settings_Options_Endpoint' ) ) {
+                return new BP_REST_Account_Settings_Options_Endpoint();
+            }
+
+            return null;
+        }
+
+        private function normalize_notification_fields_payload( $fields ) {
+            $master_controls = [];
+            $groups          = [];
+            $current_group   = null;
+
+            foreach ( (array) $fields as $field ) {
+                if ( ! is_array( $field ) ) {
+                    continue;
+                }
+
+                $group_label = isset( $field['group_label'] ) ? trim( wp_strip_all_tags( (string) $field['group_label'] ) ) : '';
+                if ( '' !== $group_label ) {
+                    $current_group = [
+                        'key'   => sanitize_key( $group_label ) ?: 'group-' . ( count( $groups ) + 1 ),
+                        'label' => $group_label,
+                        'items' => [],
+                    ];
+                    $groups[] = $current_group;
+                    continue;
+                }
+
+                $channels = $this->build_notification_channel_payload( $field['subfields'] ?? [] );
+                if ( empty( $channels ) ) {
+                    continue;
+                }
+
+                if ( $this->is_notification_master_control( $channels, $field ) ) {
+                    $master_controls = array_values( array_merge( $master_controls, $channels ) );
+                    continue;
+                }
+
+                if ( empty( $groups ) ) {
+                    $groups[] = [
+                        'key'   => 'general',
+                        'label' => __( 'General', 'koopo' ),
+                        'items' => [],
+                    ];
+                }
+
+                $group_index = count( $groups ) - 1;
+                $label       = isset( $field['label'] ) ? trim( wp_strip_all_tags( (string) $field['label'] ) ) : __( 'Notification', 'koopo' );
+                $item_key    = sanitize_key( ! empty( $field['name'] ) ? (string) $field['name'] : $label );
+                if ( '' === $item_key ) {
+                    $item_key = 'item-' . ( count( (array) $groups[ $group_index ]['items'] ) + 1 );
+                }
+
+                $groups[ $group_index ]['items'][] = [
+                    'key'      => $item_key,
+                    'label'    => $label,
+                    'channels' => array_values( $channels ),
+                ];
+            }
+
+            $groups = array_values(
+                array_filter(
+                    $groups,
+                    function ( $group ) {
+                        return ! empty( $group['items'] );
+                    }
+                )
+            );
+
+            return [
+                'masterControls' => array_values( $master_controls ),
+                'groups'         => $groups,
+            ];
+        }
+
+        private function build_notification_channel_payload( $subfields ) {
+            $channels = [];
+
+            foreach ( (array) $subfields as $subfield ) {
+                if ( ! is_array( $subfield ) || empty( $subfield['name'] ) ) {
+                    continue;
+                }
+
+                $setting_key = sanitize_key( (string) $subfield['name'] );
+                if ( '' === $setting_key ) {
+                    continue;
+                }
+
+                $channel = $this->map_notification_channel( $setting_key, $subfield['label'] ?? '' );
+                if ( '' === $channel ) {
+                    continue;
+                }
+
+                $channels[] = [
+                    'settingKey' => $setting_key,
+                    'channel'    => $channel,
+                    'label'      => trim( wp_strip_all_tags( (string) ( $subfield['label'] ?? ucfirst( $channel ) ) ) ),
+                    'enabled'    => $this->is_notification_value_enabled( $subfield['value'] ?? false ),
+                    'disabled'   => ! empty( $subfield['disabled'] ),
+                ];
+            }
+
+            return $channels;
+        }
+
+        private function map_notification_channel( $setting_key, $label = '' ) {
+            $normalized_key   = strtolower( (string) $setting_key );
+            $normalized_label = strtolower( trim( (string) $label ) );
+
+            if ( false !== strpos( $normalized_key, '_web' ) || false !== strpos( $normalized_label, 'web' ) ) {
+                return 'web';
+            }
+
+            if ( false !== strpos( $normalized_key, '_app' ) || false !== strpos( $normalized_label, 'app' ) ) {
+                return 'app';
+            }
+
+            return 'email';
+        }
+
+        private function is_notification_master_control( $channels, $field ) {
+            if ( empty( $channels ) || ! empty( $field['name'] ) ) {
+                return false;
+            }
+
+            foreach ( (array) $channels as $channel ) {
+                if ( empty( $channel['settingKey'] ) || 0 !== strpos( (string) $channel['settingKey'], 'enable_notification_' ) ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private function is_notification_value_enabled( $value ) {
+            if ( true === $value || 1 === $value || '1' === $value ) {
+                return true;
+            }
+
+            $normalized = strtolower( trim( (string) $value ) );
+            return in_array( $normalized, [ 'yes', 'true', 'on' ], true );
+        }
+
+        private function is_story_rest_available() {
+            return class_exists( 'Koopo_Stories_REST_Story' ) && class_exists( 'Koopo_Stories_REST_Feed' );
+        }
+
+        private function call_story_rest_handler( $callback, $params = [], $method = 'GET' ) {
+            if ( ! is_callable( $callback ) ) {
+                return new WP_Error( 'koopo_account_story_handler_missing', __( 'Story settings handler is unavailable.', 'koopo' ), [ 'status' => 501 ] );
+            }
+
+            $request = new WP_REST_Request( $method );
+            foreach ( (array) $params as $key => $value ) {
+                $request->set_param( $key, $value );
+            }
+
+            return call_user_func( $callback, $request );
+        }
+
+        private function get_rest_response_data( $response ) {
+            if ( is_wp_error( $response ) ) {
+                return [];
+            }
+
+            if ( $response instanceof WP_REST_Response || $response instanceof WP_HTTP_Response ) {
+                $data = $response->get_data();
+                return is_array( $data ) ? $data : [];
+            }
+
+            return is_array( $response ) ? $response : [];
+        }
+
+        private function is_moderation_blocking_available() {
+            return function_exists( 'bp_moderation_get' )
+                && function_exists( 'bp_moderation_delete' )
+                && function_exists( 'bp_is_moderation_member_blocking_enable' )
+                && class_exists( 'BP_Moderation_Members' )
+                && bp_is_moderation_member_blocking_enable( 0 );
+        }
+
+        private function get_blocked_moderation( $block_id ) {
+            if ( ! $this->is_moderation_blocking_available() ) {
+                return null;
+            }
+
+            $moderations = bp_moderation_get(
+                [
+                    'user_id'           => get_current_user_id(),
+                    'in'                => [ (int) $block_id ],
+                    'page'              => 1,
+                    'per_page'          => 1,
+                    'sort'              => 'DESC',
+                    'order_by'          => 'last_updated',
+                    'in_types'          => [ BP_Moderation_Members::$moderation_type ],
+                    'update_meta_cache' => false,
+                    'count_total'       => false,
+                    'display_reporters' => false,
+                    'filter'            => [
+                        'hide_sitewide' => 0,
+                    ],
+                ]
+            );
+
+            if ( ! empty( $moderations['moderations'][0] ) ) {
+                return $moderations['moderations'][0];
+            }
+
+            return null;
         }
 
         private function get_profile_tabs_controller() {
@@ -618,19 +1112,76 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         }
 
         private function build_member_summary( $user ) {
-            if ( ! ( $user instanceof WP_User ) ) {
+            if ( $user instanceof WP_User ) {
+                $avatar_url  = get_avatar_url( $user->ID, [ 'size' => 96 ] );
+                $profile_url = function_exists( 'bp_core_get_user_domain' )
+                    ? bp_core_get_user_domain( $user->ID )
+                    : get_author_posts_url( $user->ID );
+
+                return [
+                    'id'          => (int) $user->ID,
+                    'displayName' => (string) $user->display_name,
+                    'username'    => (string) $user->user_login,
+                    'avatarUrl'   => $avatar_url ? (string) $avatar_url : '',
+                    'profileUrl'  => $profile_url ? (string) $profile_url : '',
+                ];
+            }
+
+            if ( is_object( $user ) ) {
+                $user = (array) $user;
+            }
+
+            if ( ! is_array( $user ) ) {
                 return null;
             }
 
-            $avatar_url = get_avatar_url( $user->ID, [ 'size' => 96 ] );
-            $profile_url = function_exists( 'bp_core_get_user_domain' )
-                ? bp_core_get_user_domain( $user->ID )
-                : get_author_posts_url( $user->ID );
+            $user_id = isset( $user['id'] ) ? (int) $user['id'] : ( isset( $user['ID'] ) ? (int) $user['ID'] : 0 );
+            if ( $user_id <= 0 ) {
+                return null;
+            }
+
+            $display_name = '';
+            if ( ! empty( $user['displayName'] ) ) {
+                $display_name = (string) $user['displayName'];
+            } elseif ( ! empty( $user['display_name'] ) ) {
+                $display_name = (string) $user['display_name'];
+            } elseif ( ! empty( $user['name'] ) ) {
+                $display_name = (string) $user['name'];
+            } elseif ( ! empty( $user['user_login'] ) ) {
+                $display_name = (string) $user['user_login'];
+            }
+
+            $username = '';
+            if ( ! empty( $user['username'] ) ) {
+                $username = (string) $user['username'];
+            } elseif ( ! empty( $user['user_login'] ) ) {
+                $username = (string) $user['user_login'];
+            }
+
+            $avatar_url = '';
+            if ( ! empty( $user['avatarUrl'] ) ) {
+                $avatar_url = (string) $user['avatarUrl'];
+            } elseif ( ! empty( $user['avatar_url'] ) ) {
+                $avatar_url = (string) $user['avatar_url'];
+            } elseif ( ! empty( $user['avatar'] ) ) {
+                $avatar_url = (string) $user['avatar'];
+            } else {
+                $avatar_url = (string) get_avatar_url( $user_id, [ 'size' => 96 ] );
+            }
+
+            $profile_url = '';
+            if ( ! empty( $user['profileUrl'] ) ) {
+                $profile_url = (string) $user['profileUrl'];
+            } elseif ( ! empty( $user['profile_url'] ) ) {
+                $profile_url = (string) $user['profile_url'];
+            } elseif ( function_exists( 'bp_core_get_user_domain' ) ) {
+                $profile_url = (string) bp_core_get_user_domain( $user_id );
+            }
 
             return [
-                'id'          => (int) $user->ID,
-                'displayName' => (string) $user->display_name,
-                'username'    => (string) $user->user_login,
+                'id'          => $user_id,
+                'displayName' => '' !== $display_name ? $display_name : sprintf( __( 'User #%d', 'koopo' ), $user_id ),
+                'username'    => $username,
                 'avatarUrl'   => $avatar_url ? (string) $avatar_url : '',
                 'profileUrl'  => $profile_url ? (string) $profile_url : '',
             ];
