@@ -3,7 +3,7 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.50
+ * Version: 2.53
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
@@ -54,6 +54,9 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-p
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php';
 }
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php';
+}
 // Koopo Dokan upgrade modal integration
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php' ) ) {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php';
@@ -70,6 +73,14 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/registration-bridge.ph
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php';
     Koopo_Influencer_Square::instance();
+}
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/favorites/class-koopo-favorites.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/favorites/class-koopo-favorites.php';
+    Koopo_Favorites::instance();
+}
+if ( class_exists( 'Koopo_Account_Settings_Rest' ) ) {
+    $koopo_account_settings_rest = new Koopo_Account_Settings_Rest();
+    $koopo_account_settings_rest->init();
 }
 
 //add_filter( 'template_include', 'kb_include_audio_templates' );

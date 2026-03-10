@@ -9,6 +9,7 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
     class Koopo_BuddyBoss_Profile_Tabs {
 
         const META_HIDDEN_TABS = '_koopo_bb_hidden_profile_tabs';
+        const META_PROFILE_VISIBILITY = '_koopo_bb_profile_visibility';
         const SETTINGS_ACTION  = 'profile-tabs';
         const SETTINGS_NONCE   = 'koopo_bb_profile_tabs_nonce';
 
@@ -26,6 +27,7 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
 
             add_action( 'bp_setup_nav', [ $this, 'register_settings_subnav' ], 200 );
             add_action( 'bp_actions', [ $this, 'maybe_save_settings' ], 5 );
+            add_action( 'bp_actions', [ $this, 'enforce_profile_visibility' ], 1 );
             add_action( 'bp_actions', [ $this, 'filter_profile_tabs_for_viewers' ], 20 );
         }
 
@@ -202,6 +204,83 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
             }
         }
 
+        public function get_hidden_tabs_for_user( $user_id ) {
+            return $this->get_user_hidden_tabs( $user_id );
+        }
+
+        public function get_controlled_tabs() {
+            return $this->get_available_controlled_tabs();
+        }
+
+        public function get_profile_visibility_for_user( $user_id ) {
+            $visibility = get_user_meta( $user_id, self::META_PROFILE_VISIBILITY, true );
+            return $this->sanitize_profile_visibility( $visibility );
+        }
+
+        public function update_profile_visibility_for_user( $user_id, $visibility ) {
+            return update_user_meta( $user_id, self::META_PROFILE_VISIBILITY, $this->sanitize_profile_visibility( $visibility ) );
+        }
+
+        public function can_view_profile( $displayed_user_id, $viewer_id = 0 ) {
+            $displayed_user_id = (int) $displayed_user_id;
+            $viewer_id         = (int) $viewer_id;
+
+            if ( $displayed_user_id <= 0 ) {
+                return false;
+            }
+
+            if ( $viewer_id > 0 && $viewer_id === $displayed_user_id ) {
+                return true;
+            }
+
+            if ( $this->is_admin_or_moderator() ) {
+                return true;
+            }
+
+            $visibility = $this->get_profile_visibility_for_user( $displayed_user_id );
+            if ( 'public' === $visibility ) {
+                return true;
+            }
+
+            if ( $viewer_id <= 0 ) {
+                return false;
+            }
+
+            if ( 'friends' === $visibility ) {
+                return $this->are_users_friends( $viewer_id, $displayed_user_id );
+            }
+
+            return false;
+        }
+
+        public function enforce_profile_visibility() {
+            if ( ! bp_is_user() ) {
+                return;
+            }
+
+            $displayed_user_id = bp_displayed_user_id();
+            if ( ! $displayed_user_id ) {
+                return;
+            }
+
+            if ( $this->can_view_profile( $displayed_user_id, get_current_user_id() ) ) {
+                return;
+            }
+
+            $visibility = $this->get_profile_visibility_for_user( $displayed_user_id );
+            $message    = 'friends' === $visibility
+                ? __( 'This profile is only visible to friends.', 'koopo' )
+                : __( 'This profile is private.', 'koopo' );
+
+            bp_core_add_message( $message, 'error' );
+
+            if ( function_exists( 'bp_get_members_directory_permalink' ) ) {
+                bp_core_redirect( bp_get_members_directory_permalink() );
+            }
+
+            bp_core_redirect( home_url( '/' ) );
+        }
+
         private function can_edit_displayed_user_settings() {
             if ( bp_is_my_profile() ) {
                 return true;
@@ -227,17 +306,26 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
             return array_values( array_unique( array_map( 'sanitize_key', $tabs ) ) );
         }
 
+        private function sanitize_profile_visibility( $value ) {
+            $visibility = sanitize_key( (string) $value );
+            if ( in_array( $visibility, [ 'public', 'friends', 'private' ], true ) ) {
+                return $visibility;
+            }
+
+            return 'public';
+        }
+
         private function get_available_controlled_tabs() {
             $tabs = [];
             $bp   = buddypress();
 
             if ( empty( $bp->members ) || empty( $bp->members->nav ) ) {
-                return $tabs;
+                return $this->get_fallback_controlled_tabs();
             }
 
             $nav_items = $bp->members->nav->get_primary( [], false );
             if ( empty( $nav_items ) ) {
-                return $tabs;
+                return $this->get_fallback_controlled_tabs();
             }
 
             foreach ( $nav_items as $nav_item ) {
@@ -265,6 +353,10 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
             }
 
             asort( $tabs );
+
+            if ( empty( $tabs ) ) {
+                return $this->get_fallback_controlled_tabs();
+            }
 
             return $tabs;
         }
@@ -389,6 +481,31 @@ if ( ! class_exists( 'Koopo_BuddyBoss_Profile_Tabs' ) ) {
             }
 
             return null;
+        }
+
+        private function are_users_friends( $viewer_id, $displayed_user_id ) {
+            if ( function_exists( 'friends_check_friendship' ) ) {
+                return (bool) friends_check_friendship( $viewer_id, $displayed_user_id );
+            }
+
+            if ( function_exists( 'friends_check_friendship_status' ) ) {
+                return 'is_friend' === friends_check_friendship_status( $viewer_id, $displayed_user_id );
+            }
+
+            return false;
+        }
+
+        private function get_fallback_controlled_tabs() {
+            return [
+                'photos'    => __( 'Photos', 'koopo' ),
+                'videos'    => __( 'Videos', 'koopo' ),
+                'friends'   => __( 'Friends', 'koopo' ),
+                'groups'    => __( 'Groups', 'koopo' ),
+                'blog'      => __( 'Blog', 'koopo' ),
+                'listings'  => __( 'Listings', 'koopo' ),
+                'favorites' => __( 'Favorites', 'koopo' ),
+                'reviews'   => __( 'Reviews', 'koopo' ),
+            ];
         }
     }
 }
