@@ -13,6 +13,8 @@ class Koopo_Influencer_Square_Analytics {
     const OPTION_AD_RPM        = 'koopo_is_ad_rpm';
     const OPTION_CREATOR_SHARE = 'koopo_is_creator_share_percent';
     const OPTION_REVENUE_SHARE = 'koopo_is_revenue_sharing_enabled';
+    const OPTION_REACTIONS_BEFORE = 'koopo_is_reactions_before_content';
+    const OPTION_REACTIONS_AFTER  = 'koopo_is_reactions_after_content';
 
     public function get_trackable_post_types() {
         $post_types = apply_filters( 'koopo_is_trackable_post_types', array( 'post' ) );
@@ -185,6 +187,8 @@ class Koopo_Influencer_Square_Analytics {
                 'ad_rpm'                => $this->get_ad_rpm(),
                 'creator_share_percent' => $this->get_creator_share_percent(),
                 'revenue_sharing_enabled' => $this->is_revenue_sharing_enabled(),
+                'reactions_before_content' => $this->is_reaction_ui_before_content_enabled(),
+                'reactions_after_content'  => $this->is_reaction_ui_after_content_enabled(),
             ),
             'totals'   => $totals,
             'articles' => $articles,
@@ -299,6 +303,8 @@ class Koopo_Influencer_Square_Analytics {
                 'ad_rpm'                => $this->get_ad_rpm(),
                 'creator_share_percent' => $this->get_creator_share_percent(),
                 'revenue_sharing_enabled' => $this->is_revenue_sharing_enabled(),
+                'reactions_before_content' => $this->is_reaction_ui_before_content_enabled(),
+                'reactions_after_content'  => $this->is_reaction_ui_after_content_enabled(),
             ),
             'totals'   => $totals,
             'authors'  => array_values( $author_rows ),
@@ -390,6 +396,16 @@ class Koopo_Influencer_Square_Analytics {
 
     public function is_revenue_sharing_enabled() {
         $enabled = get_option( self::OPTION_REVENUE_SHARE, 1 );
+        return 1 === (int) $enabled;
+    }
+
+    public function is_reaction_ui_before_content_enabled() {
+        $enabled = get_option( self::OPTION_REACTIONS_BEFORE, 1 );
+        return 1 === (int) $enabled;
+    }
+
+    public function is_reaction_ui_after_content_enabled() {
+        $enabled = get_option( self::OPTION_REACTIONS_AFTER, 1 );
         return 1 === (int) $enabled;
     }
 

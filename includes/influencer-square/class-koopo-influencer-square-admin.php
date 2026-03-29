@@ -30,6 +30,24 @@ class Koopo_Influencer_Square_Admin {
     public function register_settings() {
         register_setting(
             'koopo_influencer_square_group',
+            Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_BEFORE,
+            array(
+                'sanitize_callback' => array( $this, 'sanitize_toggle' ),
+                'default'           => 1,
+            )
+        );
+
+        register_setting(
+            'koopo_influencer_square_group',
+            Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_AFTER,
+            array(
+                'sanitize_callback' => array( $this, 'sanitize_toggle' ),
+                'default'           => 1,
+            )
+        );
+
+        register_setting(
+            'koopo_influencer_square_group',
             Koopo_Influencer_Square_Analytics::OPTION_REVENUE_SHARE,
             array(
                 'sanitize_callback' => array( $this, 'sanitize_toggle' ),
@@ -134,6 +152,39 @@ class Koopo_Influencer_Square_Admin {
                     <?php submit_button( __( 'Save Revenue Settings', 'koopo' ) ); ?>
                 </form>
                 <p class="koopo-is-note"><?php esc_html_e( 'Revenue and payout are currently estimated from views and your RPM/share settings. You can later replace this with real ad network revenue.', 'koopo' ); ?></p>
+            </div>
+
+            <div class="koopo-is-panel">
+                <h2><?php esc_html_e( 'Reaction UI Settings', 'koopo' ); ?></h2>
+                <form method="post" action="options.php">
+                    <?php settings_fields( 'koopo_influencer_square_group' ); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php esc_html_e( 'Show Before Content', 'koopo' ); ?></th>
+                            <td>
+                                <label class="koopo-is-switch" for="koopo_is_reactions_before_content">
+                                    <input type="hidden" name="<?php echo esc_attr( Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_BEFORE ); ?>" value="0" />
+                                    <input type="checkbox" id="koopo_is_reactions_before_content" name="<?php echo esc_attr( Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_BEFORE ); ?>" value="1" <?php checked( $this->analytics->is_reaction_ui_before_content_enabled() ); ?> />
+                                    <span class="koopo-is-switch-ui" aria-hidden="true"></span>
+                                    <span><?php echo $this->analytics->is_reaction_ui_before_content_enabled() ? esc_html__( 'Enabled', 'koopo' ) : esc_html__( 'Disabled', 'koopo' ); ?></span>
+                                </label>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e( 'Show After Content', 'koopo' ); ?></th>
+                            <td>
+                                <label class="koopo-is-switch" for="koopo_is_reactions_after_content">
+                                    <input type="hidden" name="<?php echo esc_attr( Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_AFTER ); ?>" value="0" />
+                                    <input type="checkbox" id="koopo_is_reactions_after_content" name="<?php echo esc_attr( Koopo_Influencer_Square_Analytics::OPTION_REACTIONS_AFTER ); ?>" value="1" <?php checked( $this->analytics->is_reaction_ui_after_content_enabled() ); ?> />
+                                    <span class="koopo-is-switch-ui" aria-hidden="true"></span>
+                                    <span><?php echo $this->analytics->is_reaction_ui_after_content_enabled() ? esc_html__( 'Enabled', 'koopo' ) : esc_html__( 'Disabled', 'koopo' ); ?></span>
+                                </label>
+                            </td>
+                        </tr>
+                    </table>
+                    <?php submit_button( __( 'Save Reaction UI Settings', 'koopo' ) ); ?>
+                </form>
+                <p class="koopo-is-note"><?php esc_html_e( 'Use these toggles to test whether the “Was this article helpful?” block works better before content, after content, or in both positions.', 'koopo' ); ?></p>
             </div>
 
             <div class="koopo-is-panel">

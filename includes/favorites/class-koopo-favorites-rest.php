@@ -118,6 +118,30 @@ class Koopo_Favorites_REST {
 
         register_rest_route(
             $this->namespace,
+            '/favorites/items/transfer',
+            array(
+                array(
+                    'methods'             => WP_REST_Server::CREATABLE,
+                    'callback'            => array( $this, 'transfer_item' ),
+                    'permission_callback' => array( $this, 'must_be_logged_in' ),
+                ),
+            )
+        );
+
+        register_rest_route(
+            $this->namespace,
+            '/favorites/items/bulk',
+            array(
+                array(
+                    'methods'             => WP_REST_Server::CREATABLE,
+                    'callback'            => array( $this, 'bulk_update_items' ),
+                    'permission_callback' => array( $this, 'must_be_logged_in' ),
+                ),
+            )
+        );
+
+        register_rest_route(
+            $this->namespace,
             '/favorites/post/(?P<post_id>\d+)/status',
             array(
                 array(
@@ -136,6 +160,18 @@ class Koopo_Favorites_REST {
                     'methods'             => WP_REST_Server::READABLE,
                     'callback'            => array( $this, 'get_shared_list' ),
                     'permission_callback' => '__return_true',
+                ),
+            )
+        );
+
+        register_rest_route(
+            $this->namespace,
+            '/favorites/shared/(?P<slug>[a-zA-Z0-9\-]+)/import',
+            array(
+                array(
+                    'methods'             => WP_REST_Server::CREATABLE,
+                    'callback'            => array( $this, 'import_shared_list' ),
+                    'permission_callback' => array( $this, 'must_be_logged_in' ),
                 ),
             )
         );
@@ -274,6 +310,40 @@ class Koopo_Favorites_REST {
         return rest_ensure_response( $result );
     }
 
+    public function transfer_item( WP_REST_Request $request ) {
+        $user_id          = get_current_user_id();
+        $source_list_id   = sanitize_text_field( (string) $request->get_param( 'source_list_id' ) );
+        $target_list_id   = sanitize_text_field( (string) $request->get_param( 'target_list_id' ) );
+        $target_list_name = sanitize_text_field( (string) $request->get_param( 'target_list_name' ) );
+        $post_id          = absint( $request->get_param( 'post_id' ) );
+        $mode             = sanitize_key( (string) $request->get_param( 'mode' ) );
+
+        $result = $this->service->transfer_item( $user_id, $source_list_id, $post_id, $mode, $target_list_id, $target_list_name );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return rest_ensure_response( $result );
+    }
+
+    public function bulk_update_items( WP_REST_Request $request ) {
+        $user_id          = get_current_user_id();
+        $source_list_id   = sanitize_text_field( (string) $request->get_param( 'source_list_id' ) );
+        $target_list_id   = sanitize_text_field( (string) $request->get_param( 'target_list_id' ) );
+        $target_list_name = sanitize_text_field( (string) $request->get_param( 'target_list_name' ) );
+        $post_ids         = $request->get_param( 'post_ids' );
+        $operation        = sanitize_key( (string) $request->get_param( 'operation' ) );
+
+        $result = $this->service->bulk_update_items( $user_id, $source_list_id, $post_ids, $operation, $target_list_id, $target_list_name );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return rest_ensure_response( $result );
+    }
+
     public function get_post_status( WP_REST_Request $request ) {
         $user_id = get_current_user_id();
         $post_id = absint( $request['post_id'] );
@@ -290,5 +360,19 @@ class Koopo_Favorites_REST {
         }
 
         return rest_ensure_response( $list );
+    }
+
+    public function import_shared_list( WP_REST_Request $request ) {
+        $user_id = get_current_user_id();
+        $slug    = sanitize_text_field( (string) $request['slug'] );
+        $name    = sanitize_text_field( (string) $request->get_param( 'name' ) );
+
+        $result = $this->service->import_public_list_as_new_list( $user_id, $slug, $name );
+
+        if ( is_wp_error( $result ) ) {
+            return $result;
+        }
+
+        return rest_ensure_response( $result );
     }
 }

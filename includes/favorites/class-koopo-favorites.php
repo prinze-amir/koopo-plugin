@@ -36,6 +36,7 @@ class Koopo_Favorites {
 
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
         add_filter( 'the_content', array( $this, 'inject_heart_button' ), 18 );
+        add_filter( 'template_include', array( $this, 'maybe_use_shared_template' ), 99 );
         add_action( 'woocommerce_single_product_summary', array( $this, 'render_product_heart_above_title' ), 4 );
     }
 
@@ -44,18 +45,23 @@ class Koopo_Favorites {
             return;
         }
 
+        $style_path    = __DIR__ . '/assets/koopo-favorites.css';
+        $script_path   = __DIR__ . '/assets/koopo-favorites.js';
+        $style_version = file_exists( $style_path ) ? (string) filemtime( $style_path ) : '1.0.0';
+        $script_version = file_exists( $script_path ) ? (string) filemtime( $script_path ) : '1.0.0';
+
         wp_enqueue_style(
             'koopo-favorites',
             plugins_url( 'assets/koopo-favorites.css', __FILE__ ),
             array(),
-            '1.0.0'
+            $style_version
         );
 
         wp_enqueue_script(
             'koopo-favorites',
             plugins_url( 'assets/koopo-favorites.js', __FILE__ ),
             array(),
-            '1.0.0',
+            $script_version,
             true
         );
 
@@ -74,16 +80,40 @@ class Koopo_Favorites {
                     'deleteListConfirm'     => __( 'Delete this list?', 'koopo' ),
                     'removeItemConfirm'     => __( 'Remove this item from the list?', 'koopo' ),
                     'renamePrompt'          => __( 'Enter new list name', 'koopo' ),
+                    'copyPrompt'            => __( 'Copy this item to which list?', 'koopo' ),
+                    'movePrompt'            => __( 'Move this item to which list?', 'koopo' ),
                     'error'                 => __( 'Something went wrong. Please try again.', 'koopo' ),
                     'copySuccess'           => __( 'Share link copied.', 'koopo' ),
                     'loginRequired'         => __( 'Please log in to manage favorites.', 'koopo' ),
                     'noLists'               => __( 'No lists yet. Create your first list below.', 'koopo' ),
                     'noItems'               => __( 'No items in this list yet.', 'koopo' ),
+                    'selectedLabel'         => __( 'selected', 'koopo' ),
+                    'copyItemLabel'         => __( 'Copy', 'koopo' ),
+                    'moveItemLabel'         => __( 'Move', 'koopo' ),
+                    'removeItemLabel'       => __( 'Remove', 'koopo' ),
+                    'bulkCopyLabel'         => __( 'Copy Selected', 'koopo' ),
+                    'bulkMoveLabel'         => __( 'Move Selected', 'koopo' ),
+                    'bulkRemoveLabel'       => __( 'Remove Selected', 'koopo' ),
+                    'selectItemLabel'       => __( 'Select', 'koopo' ),
+                    'selectAllLabel'        => __( 'Select All', 'koopo' ),
+                    'clearSelectionLabel'   => __( 'Clear Selection', 'koopo' ),
+                    'selectListLabel'       => __( 'Add to an existing list', 'koopo' ),
+                    'selectListPlaceholder' => __( 'Select a list', 'koopo' ),
+                    'createNewListLabel'    => __( 'Or create a new list', 'koopo' ),
+                    'transferHint'          => __( 'Choose an existing list or enter a new name.', 'koopo' ),
+                    'copyToListTitle'       => __( 'Copy to Another List', 'koopo' ),
+                    'moveToListTitle'       => __( 'Move to Another List', 'koopo' ),
+                    'copyItemsButton'       => __( 'Copy Items', 'koopo' ),
+                    'moveItemsButton'       => __( 'Move Items', 'koopo' ),
+                    'transferTargetRequired'=> __( 'Select an existing list or enter a new list name.', 'koopo' ),
+                    'openSharedLabel'       => __( 'Open Shared List', 'koopo' ),
+                    'sharedByLabel'         => __( 'Shared by', 'koopo' ),
+                    'copySharedLabel'       => __( 'Copy As New List', 'koopo' ),
+                    'copySharedSuccess'     => __( 'Shared list copied to your favorites.', 'koopo' ),
                     'pickerTitle'           => __( 'Save To Favorites', 'koopo' ),
                     'saveButton'            => __( 'Save', 'koopo' ),
                     'cancelButton'          => __( 'Cancel', 'koopo' ),
                     'favoritesLabel'        => __( 'Favorites', 'koopo' ),
-                    'publishSuccess'        => __( 'List has been posted.', 'koopo' ),
                 ),
             )
         );
@@ -143,12 +173,33 @@ class Koopo_Favorites {
         return ob_get_clean();
     }
 
+    public function maybe_use_shared_template( $template ) {
+        if ( is_admin() || ! isset( $_GET['koopo_favorites_share'] ) ) {
+            return $template;
+        }
+
+        $shared_template = __DIR__ . '/templates/shared-list-template.php';
+
+        if ( file_exists( $shared_template ) ) {
+            return $shared_template;
+        }
+
+        return $template;
+    }
+
     public function render_favorite_button_shortcode( $atts ) {
         $atts = shortcode_atts(
             array(
-                'post_id' => 0,
-                'label'   => '',
-                'class'   => '',
+                'post_id'         => 0,
+                'label'           => '',
+                'class'           => '',
+                'disable_modal'   => '',
+                'list'            => '',
+                'icon'            => 'heart',
+                'icon_color'      => '',
+                'icon_background' => '',
+                'icon_padding'    => '',
+                'icon_size'       => '',
             ),
             (array) $atts,
             'koopo_favorite_button'
@@ -163,20 +214,61 @@ class Koopo_Favorites {
             return '';
         }
 
-        $label = $atts['label'] ? sanitize_text_field( $atts['label'] ) : __( 'Favorites', 'koopo' );
-        $extra_class = $atts['class'] ? sanitize_html_class( $atts['class'] ) : '';
+        $label            = $atts['label'] ? sanitize_text_field( $atts['label'] ) : __( 'Favorites', 'koopo' );
+        $extra_class      = $atts['class'] ? sanitize_html_class( $atts['class'] ) : '';
+        $disable_modal    = $this->is_truthy_attribute( $atts['disable_modal'] );
+        $target_list_name = $disable_modal ? sanitize_text_field( (string) $atts['list'] ) : '';
+        $behavior         = $disable_modal ? 'direct' : 'picker';
+        $icon             = $this->sanitize_icon_type( $atts['icon'] );
+        $styles           = array();
+
+        if ( '' !== $atts['icon_color'] ) {
+            $styles[] = '--koopo-favorite-color:' . $this->sanitize_css_value( $atts['icon_color'] );
+        }
+        if ( '' !== $atts['icon_background'] ) {
+            $styles[] = '--koopo-favorite-background:' . $this->sanitize_css_value( $atts['icon_background'] );
+        }
+        if ( '' !== $atts['icon_padding'] ) {
+            $styles[] = '--koopo-favorite-padding:' . $this->sanitize_css_value( $atts['icon_padding'] );
+        }
+        if ( '' !== $atts['icon_size'] ) {
+            $styles[] = '--koopo-favorite-size:' . $this->sanitize_css_value( $atts['icon_size'] );
+        }
 
         ob_start();
         ?>
-        <button type="button" class="koopo-favorite-heart <?php echo esc_attr( $extra_class ); ?>" data-post-id="<?php echo esc_attr( $post_id ); ?>" aria-pressed="false" aria-label="<?php echo esc_attr( $label ); ?>" title="<?php echo esc_attr( $label ); ?>">
-            <span class="koopo-favorite-heart__icon" aria-hidden="true">❤</span>
+        <span
+            role="button"
+            tabindex="0"
+            class="koopo-favorite-heart koopo-favorite-heart--<?php echo esc_attr( $icon ); ?> <?php echo esc_attr( $extra_class ); ?>"
+            data-post-id="<?php echo esc_attr( $post_id ); ?>"
+            data-icon="<?php echo esc_attr( $icon ); ?>"
+            data-behavior="<?php echo esc_attr( $behavior ); ?>"
+            <?php if ( $disable_modal && '' === $target_list_name ) : ?>
+                data-target-list-id="<?php echo esc_attr( Koopo_Favorites_Service::DEFAULT_LIST_ID ); ?>"
+            <?php endif; ?>
+            <?php if ( $disable_modal && '' !== $target_list_name ) : ?>
+                data-target-list-name="<?php echo esc_attr( $target_list_name ); ?>"
+            <?php endif; ?>
+            aria-pressed="false"
+            aria-label="<?php echo esc_attr( $label ); ?>"
+            title="<?php echo esc_attr( $label ); ?>"
+            <?php if ( ! empty( $styles ) ) : ?>
+                style="<?php echo esc_attr( implode( ';', $styles ) ); ?>"
+            <?php endif; ?>
+        >
+            <span class="koopo-favorite-heart__icon" aria-hidden="true"><?php echo $this->get_icon_markup( $icon ); ?></span>
             <span class="screen-reader-text"><?php echo esc_html( $label ); ?></span>
-        </button>
+        </span>
         <?php
         return ob_get_clean();
     }
 
     public function inject_heart_button( $content ) {
+        if ( ! $this->service->is_auto_display_enabled() ) {
+            return $content;
+        }
+
         if ( is_admin() || ! in_the_loop() || ! is_main_query() ) {
             return $content;
         }
@@ -204,6 +296,10 @@ class Koopo_Favorites {
     }
 
     public function render_product_heart_above_title() {
+        if ( ! $this->service->is_auto_display_enabled() ) {
+            return;
+        }
+
         if ( ! function_exists( 'is_product' ) || ! is_product() ) {
             return;
         }
@@ -246,6 +342,31 @@ class Koopo_Favorites {
         }
 
         return isset( $_GET['koopo_favorites_share'] );
+    }
+
+    private function sanitize_icon_type( $icon ) {
+        $icon = sanitize_key( (string) $icon );
+        return in_array( $icon, array( 'heart', 'bookmark' ), true ) ? $icon : 'heart';
+    }
+
+    private function is_truthy_attribute( $value ) {
+        if ( is_bool( $value ) ) {
+            return $value;
+        }
+
+        return in_array( strtolower( trim( (string) $value ) ), array( '1', 'true', 'yes', 'on' ), true );
+    }
+
+    private function sanitize_css_value( $value ) {
+        return preg_replace( '/[^#%(),.\\s\\-\\/0-9a-zA-Z]/', '', (string) $value );
+    }
+
+    private function get_icon_markup( $icon ) {
+        if ( 'bookmark' === $icon ) {
+            return '<svg viewBox="0 0 24 24" focusable="false"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z" fill="currentColor"/></svg>';
+        }
+
+        return '<svg viewBox="0 0 24 24" focusable="false"><path d="M12 21.35 10.55 20C5.4 15.24 2 12.09 2 8.25A5.25 5.25 0 0 1 7.25 3c1.8 0 3.53.84 4.75 2.17A6.35 6.35 0 0 1 16.75 3 5.25 5.25 0 0 1 22 8.25c0 3.84-3.4 6.99-8.55 11.76L12 21.35Z" fill="currentColor"/></svg>';
     }
 
     private function get_current_url() {

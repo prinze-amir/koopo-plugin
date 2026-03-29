@@ -45,6 +45,10 @@ class Koopo_Influencer_Square {
             return;
         }
 
+        if ( ! $this->analytics->is_reaction_ui_before_content_enabled() && ! $this->analytics->is_reaction_ui_after_content_enabled() ) {
+            return;
+        }
+
         wp_enqueue_style(
             'koopo-influencer-square-reactions',
             plugins_url( 'assets/influencer-square-reactions.css', __FILE__ ),
@@ -90,10 +94,25 @@ class Koopo_Influencer_Square {
             return $content;
         }
 
+        $show_before = $this->analytics->is_reaction_ui_before_content_enabled();
+        $show_after  = $this->analytics->is_reaction_ui_after_content_enabled();
+
+        if ( ! $show_before && ! $show_after ) {
+            return $content;
+        }
+
         $stats = $this->analytics->get_post_stats( $post_id, get_current_user_id() );
         $ui    = $this->render_reaction_ui( $stats );
 
-        return $ui . $content . $ui;
+        if ( $show_before && $show_after ) {
+            return $ui . $content . $ui;
+        }
+
+        if ( $show_before ) {
+            return $ui . $content;
+        }
+
+        return $content . $ui;
     }
 
     public function render_dashboard_shortcode( $atts ) {
