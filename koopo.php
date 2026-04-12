@@ -57,6 +57,12 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php';
 }
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/creator-support/class-koopo-creator-support.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/creator-support/class-koopo-creator-support.php';
+    if ( class_exists( 'Koopo_Creator_Support' ) ) {
+        Koopo_Creator_Support::instance();
+    }
+}
 // Koopo Dokan upgrade modal integration
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php' ) ) {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgrade.php';
@@ -72,7 +78,11 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/registration-bridge.ph
 }
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/influencer-square/class-koopo-influencer-square.php';
-    Koopo_Influencer_Square::instance();
+    if ( class_exists( 'Koopo_Influencer_Square' ) ) {
+        register_activation_hook( __FILE__, array( 'Koopo_Influencer_Square', 'activate' ) );
+        register_deactivation_hook( __FILE__, array( 'Koopo_Influencer_Square', 'deactivate' ) );
+        Koopo_Influencer_Square::instance();
+    }
 }
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/favorites/class-koopo-favorites.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/favorites/class-koopo-favorites.php';

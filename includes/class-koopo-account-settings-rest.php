@@ -12,6 +12,8 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         const META_CLOSE_FRIENDS      = '_koopo_story_close_friend_ids';
         const META_HIDDEN_STORY_USERS = '_koopo_story_hidden_author_ids';
         const META_BLOCKED_MEMBERS    = '_koopo_blocked_member_ids';
+        const EXPORT_TRANSIENT_PREFIX = 'koopo_account_export_';
+        const EXPORT_DOWNLOAD_ACTION  = 'koopo_account_export_download';
 
         /**
          * @var Koopo_BuddyBoss_Profile_Tabs|null
@@ -24,6 +26,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function init() {
             add_action( 'rest_api_init', [ $this, 'register_routes' ] );
+            add_action( 'admin_post_' . self::EXPORT_DOWNLOAD_ACTION, [ $this, 'stream_data_export' ] );
         }
 
         public function register_routes() {
@@ -75,6 +78,16 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                         'callback'            => [ $this, 'update_notification_settings' ],
                         'permission_callback' => [ $this, 'require_authenticated_user' ],
                     ],
+                ]
+            );
+
+            register_rest_route(
+                self::REST_NAMESPACE,
+                '/account/subscriptions',
+                [
+                    'methods'             => WP_REST_Server::READABLE,
+                    'callback'            => [ $this, 'get_subscription_summary' ],
+                    'permission_callback' => [ $this, 'require_authenticated_user' ],
                 ]
             );
 
@@ -349,6 +362,10 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             return rest_ensure_response( $this->get_notification_settings_payload() );
         }
 
+        public function get_subscription_summary() {
+            return rest_ensure_response( $this->get_subscription_summary_payload( get_current_user_id() ) );
+        }
+
         public function get_story_settings() {
             return rest_ensure_response( $this->get_story_settings_payload( get_current_user_id() ) );
         }
@@ -548,11 +565,14 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                 'blocked'     => $this->get_blocked_members_payload( $user_id ),
             ];
 
-            $json  = wp_json_encode( $payload, JSON_PRETTY_PRINT );
-            $file  = wp_upload_bits( sprintf( 'koopo-account-export-%d-%s.json', $user_id, wp_generate_password( 12, false, false ) ), null, $json );
-            $error = isset( $file['error'] ) ? trim( (string) $file['error'] ) : '';
+            $json     = wp_json_encode( $payload, JSON_PRETTY_PRINT );
+            $filename = sprintf( 'koopo-account-export-%d-%s.json', $user_id, wp_generate_password( 12, false, false ) );
+            $token    = $this->store_data_export( $user_id, $json, $generated_at_ts, $filename );
+            if ( is_wp_error( $token ) ) {
+                return $token;
+            }
 
-            if ( '' !== $error ) {
+            if ( false === $json ) {
                 return new WP_Error( 'koopo_account_export_failed', __( 'Failed to generate export file.', 'koopo' ), [ 'status' => 500 ] );
             }
 
@@ -572,9 +592,9 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                 [
                     'generatedAt' => $generated_at,
                     'expiresAt'   => $expires_at,
-                    'fileName'    => basename( (string) $file['file'] ),
-                    'downloadUrl' => (string) $file['url'],
-                    'byteSize'    => file_exists( $file['file'] ) ? (int) filesize( $file['file'] ) : 0,
+                    'fileName'    => $filename,
+                    'downloadUrl' => $this->build_data_export_download_url( $token ),
+                    'byteSize'    => strlen( $json ),
                     'summary'     => [
                         'blockedMembers'    => count( (array) $blocked_members['items'] ),
                         'closeFriends'      => count( (array) $story_settings['closeFriends'] ),
@@ -584,6 +604,80 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                     ],
                 ]
             );
+        }
+
+        public function stream_data_export() {
+            if ( ! is_user_logged_in() ) {
+                auth_redirect();
+            }
+
+            $user_id = get_current_user_id();
+            $token   = isset( $_GET['token'] ) ? sanitize_text_field( wp_unslash( $_GET['token'] ) ) : '';
+            $stored  = $this->get_data_export_payload( $token );
+
+            if ( empty( $token ) || ! is_array( $stored ) || (int) $stored['user_id'] !== (int) $user_id ) {
+                wp_die( esc_html__( 'This export link is invalid or has expired.', 'koopo' ), 403 );
+            }
+
+            nocache_headers();
+
+            header( 'Content-Type: application/json; charset=' . get_option( 'blog_charset' ) );
+            header( 'Content-Disposition: attachment; filename="' . sanitize_file_name( $stored['file_name'] ) . '"' );
+            header( 'Content-Length: ' . strlen( $stored['json'] ) );
+
+            echo $stored['json'];
+            exit;
+        }
+
+        private function store_data_export( $user_id, $json, $generated_at_ts, $filename ) {
+            $user_id = absint( $user_id );
+            $json    = is_string( $json ) ? $json : '';
+            $filename = sanitize_file_name( (string) $filename );
+
+            if ( ! $user_id || '' === $json || '' === $filename ) {
+                return new WP_Error( 'koopo_account_export_failed', __( 'Failed to generate export file.', 'koopo' ), [ 'status' => 500 ] );
+            }
+
+            $token = wp_generate_uuid4();
+            $saved = set_transient(
+                $this->get_data_export_transient_key( $token ),
+                [
+                    'user_id'    => $user_id,
+                    'json'       => $json,
+                    'file_name'  => $filename,
+                    'created_at' => (int) $generated_at_ts,
+                ],
+                DAY_IN_SECONDS
+            );
+
+            if ( ! $saved ) {
+                return new WP_Error( 'koopo_account_export_failed', __( 'Failed to generate export file.', 'koopo' ), [ 'status' => 500 ] );
+            }
+
+            return $token;
+        }
+
+        private function build_data_export_download_url( $token ) {
+            return add_query_arg(
+                [
+                    'action' => self::EXPORT_DOWNLOAD_ACTION,
+                    'token'  => (string) $token,
+                ],
+                admin_url( 'admin-post.php' )
+            );
+        }
+
+        private function get_data_export_payload( $token ) {
+            if ( '' === $token ) {
+                return null;
+            }
+
+            $stored = get_transient( $this->get_data_export_transient_key( $token ) );
+            return is_array( $stored ) ? $stored : null;
+        }
+
+        private function get_data_export_transient_key( $token ) {
+            return self::EXPORT_TRANSIENT_PREFIX . md5( (string) $token );
         }
 
         public function delete_account( WP_REST_Request $request ) {
@@ -613,6 +707,508 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             }
 
             return rest_ensure_response( [ 'success' => true ] );
+        }
+
+        private function get_subscription_summary_payload( $user_id ) {
+            $current_pack_id      = $this->get_vendor_pack_id( $user_id );
+            $starter_pack_id      = $this->get_starter_pack_id( $user_id );
+            $current_plan         = $this->build_current_subscription_payload( $user_id, $starter_pack_id );
+            $packs                = $this->get_subscription_packs_payload( $user_id, $current_pack_id, $starter_pack_id );
+            $seller_account_active = $this->is_user_seller( $user_id ) || $current_pack_id > 0;
+
+            return [
+                'currentPlan'         => $current_plan,
+                'packs'               => $packs,
+                'upgradeEntryPoints'  => $this->get_upgrade_entry_points_payload(),
+                'recommendedProductId'=> $this->get_recommended_pack_product_id( $packs ),
+                'starterPackProductId'=> $starter_pack_id > 0 ? $starter_pack_id : null,
+                'sellerAccountActive' => $seller_account_active,
+                'monetizationUnlocked'=> ! empty( $current_plan['isActive'] ),
+            ];
+        }
+
+        private function get_subscription_packs_payload( $user_id, $current_pack_id, $starter_pack_id ) {
+            $query = new WP_Query(
+                [
+                    'post_type'      => 'product',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => 100,
+                    'fields'         => 'ids',
+                    'orderby'        => 'menu_order title',
+                    'order'          => 'ASC',
+                    'tax_query'      => [
+                        [
+                            'taxonomy' => 'product_type',
+                            'field'    => 'slug',
+                            'terms'    => 'product_pack',
+                        ],
+                    ],
+                    'no_found_rows'  => true,
+                ]
+            );
+
+            $pack_ids = array_map( 'intval', (array) $query->posts );
+            wp_reset_postdata();
+
+            usort(
+                $pack_ids,
+                function ( $left, $right ) {
+                    $left_product  = wc_get_product( $left );
+                    $right_product = wc_get_product( $right );
+                    $left_price    = $this->get_pack_price_value( $left_product );
+                    $right_price   = $this->get_pack_price_value( $right_product );
+
+                    if ( $left_price === $right_price ) {
+                        return strnatcasecmp(
+                            $left_product ? $left_product->get_name() : '',
+                            $right_product ? $right_product->get_name() : ''
+                        );
+                    }
+
+                    return $left_price < $right_price ? -1 : 1;
+                }
+            );
+
+            $current_product = $current_pack_id > 0 ? wc_get_product( $current_pack_id ) : null;
+            $current_price   = $this->get_pack_price_value( $current_product );
+            $items           = [];
+
+            foreach ( $pack_ids as $pack_id ) {
+                $item = $this->build_subscription_pack_payload( $pack_id, $current_pack_id, $current_price, $starter_pack_id );
+                if ( $item ) {
+                    $items[] = $item;
+                }
+            }
+
+            return $items;
+        }
+
+        private function build_subscription_pack_payload( $pack_id, $current_pack_id, $current_price, $starter_pack_id ) {
+            $product = wc_get_product( $pack_id );
+            if ( ! $product ) {
+                return null;
+            }
+
+            $price_value          = $this->get_pack_price_value( $product );
+            $period_label         = $this->get_pack_period_label( $pack_id );
+            $slug                 = $this->detect_pack_slug( $product->get_slug(), $product->get_name() );
+            $is_current           = (int) $pack_id === (int) $current_pack_id;
+            $is_starter           = (int) $pack_id === (int) $starter_pack_id;
+            $is_free              = $price_value <= 0;
+            $admin_commission     = get_post_meta( $pack_id, '_subscription_product_admin_commission', true );
+            $admin_commission     = is_numeric( $admin_commission ) ? (float) $admin_commission : null;
+            $description          = trim( wp_strip_all_tags( (string) $product->get_short_description() ) );
+            $fallback_description = trim( wp_strip_all_tags( (string) $product->get_description() ) );
+            $product_limit        = get_post_meta( $pack_id, '_no_of_product', true );
+            $product_limit        = is_numeric( $product_limit ) ? (int) $product_limit : null;
+            $features             = $this->build_subscription_features_payload( $pack_id );
+
+            return [
+                'productId'           => (int) $pack_id,
+                'slug'                => $slug,
+                'title'               => (string) $product->get_name(),
+                'badge'               => $this->build_pack_badge( $slug, $is_free ),
+                'price'               => wc_format_decimal( $price_value, 2 ),
+                'priceLabel'          => $this->build_pack_price_label( $price_value, $period_label ),
+                'description'         => '' !== $description ? $description : ( '' !== $fallback_description ? wp_trim_words( $fallback_description, 24 ) : '' ),
+                'highlights'          => $this->build_pack_highlights( $pack_id, $features, $period_label, $is_starter, $admin_commission ),
+                'features'            => $features,
+                'isCurrent'           => $is_current,
+                'canUpgrade'          => ! $is_current && ( 0 === (float) $current_price || $price_value > (float) $current_price ),
+                'isFree'              => $is_free,
+                'isStarter'           => $is_starter,
+                'productLimit'        => ( null !== $product_limit && $product_limit >= 0 ) ? $product_limit : null,
+                'adminCommissionRate' => $admin_commission,
+                'intervalLabel'       => $period_label,
+            ];
+        }
+
+        private function build_current_subscription_payload( $user_id, $starter_pack_id ) {
+            $pack_id = $this->get_vendor_pack_id( $user_id );
+            if ( $pack_id <= 0 ) {
+                return null;
+            }
+
+            $product = wc_get_product( $pack_id );
+            if ( ! $product ) {
+                return null;
+            }
+
+            $price_value      = $this->get_pack_price_value( $product );
+            $period_label     = $this->get_pack_period_label( $pack_id );
+            $slug             = $this->detect_pack_slug( $product->get_slug(), $product->get_name() );
+            $is_active        = $this->is_vendor_pack_active( $user_id );
+            $start_date       = (string) get_user_meta( $user_id, 'product_pack_startdate', true );
+            $end_date         = (string) get_user_meta( $user_id, 'product_pack_enddate', true );
+            $admin_commission = get_post_meta( $pack_id, '_subscription_product_admin_commission', true );
+            $admin_commission = is_numeric( $admin_commission ) ? (float) $admin_commission : null;
+            $product_limit    = get_post_meta( $pack_id, '_no_of_product', true );
+            $product_limit    = is_numeric( $product_limit ) ? (int) $product_limit : null;
+            $status_label     = $is_active ? __( 'Active subscription', 'koopo' ) : __( 'Inactive subscription', 'koopo' );
+
+            if ( $is_active && '' !== $end_date && 'unlimited' !== strtolower( $end_date ) ) {
+                $status_label = sprintf( __( 'Active until %s', 'koopo' ), $this->format_subscription_date( $end_date ) );
+            }
+
+            return [
+                'productId'           => (int) $pack_id,
+                'slug'                => $slug,
+                'title'               => (string) $product->get_name(),
+                'price'               => wc_format_decimal( $price_value, 2 ),
+                'priceLabel'          => $this->build_pack_price_label( $price_value, $period_label ),
+                'statusLabel'         => $status_label,
+                'startDate'           => '' !== $start_date ? $start_date : null,
+                'endDate'             => '' !== $end_date ? $end_date : null,
+                'isActive'            => $is_active,
+                'isStarter'           => (int) $pack_id === (int) $starter_pack_id,
+                'highlights'          => $this->build_pack_highlights( $pack_id, $this->build_subscription_features_payload( $pack_id ), $period_label, (int) $pack_id === (int) $starter_pack_id, $admin_commission ),
+                'features'            => $this->build_subscription_features_payload( $pack_id ),
+                'productLimit'        => ( null !== $product_limit && $product_limit >= 0 ) ? $product_limit : null,
+                'adminCommissionRate' => $admin_commission,
+            ];
+        }
+
+        private function build_subscription_features_payload( $pack_id ) {
+            $feature_map = $this->get_pack_feature_map( $pack_id );
+
+            return [
+                [
+                    'key'         => 'selling',
+                    'label'       => __( 'Sell products', 'koopo' ),
+                    'description' => __( 'Launch a storefront, publish products, and accept orders through the commerce flow.', 'koopo' ),
+                    'enabled'     => true,
+                ],
+                [
+                    'key'         => 'appointments',
+                    'label'       => __( 'Book appointments', 'koopo' ),
+                    'description' => __( 'Offer services, manage availability, and take bookings inside the appointments module.', 'koopo' ),
+                    'enabled'     => ! empty( $feature_map['appointments'] ),
+                ],
+                [
+                    'key'         => 'event_tickets',
+                    'label'       => __( 'Sell event tickets', 'koopo' ),
+                    'description' => __( 'Monetize events with paid ticket access and vendor-level ticket workflows.', 'koopo' ),
+                    'enabled'     => ! empty( $feature_map['event_tickets'] ),
+                ],
+                [
+                    'key'         => 'pod',
+                    'label'       => __( 'Use print-on-demand tools', 'koopo' ),
+                    'description' => __( 'Unlock Koopo POD imports and custom merchandise creation workflows.', 'koopo' ),
+                    'enabled'     => ! empty( $feature_map['pod'] ),
+                ],
+                [
+                    'key'         => 'ai_tools',
+                    'label'       => __( 'Use premium AI tools', 'koopo' ),
+                    'description' => __( 'Unlock premium Koopo AI assistants and supported AI-powered creation tools for this subscription pack.', 'koopo' ),
+                    'enabled'     => ! empty( $feature_map['ai_tools'] ),
+                ],
+            ];
+        }
+
+        private function get_pack_feature_map( $pack_id ) {
+            $features = get_post_meta( $pack_id, '_koopo_features', true );
+            if ( is_string( $features ) ) {
+                $decoded = json_decode( $features, true );
+                if ( is_array( $decoded ) ) {
+                    $features = $decoded;
+                }
+            }
+
+            if ( ! is_array( $features ) ) {
+                $features = [];
+            }
+
+            $ai_features = get_post_meta( $pack_id, '_koopo_ai_pack_features', true );
+            if ( is_string( $ai_features ) ) {
+                $decoded = json_decode( $ai_features, true );
+                if ( is_array( $decoded ) ) {
+                    $ai_features = $decoded;
+                }
+            }
+
+            if ( ! is_array( $ai_features ) ) {
+                $ai_features = [];
+            }
+
+            $has_ai_tools = ! empty( $ai_features['premium_ai_tools'] )
+                || ! empty( $ai_features['blog_assistant'] )
+                || ! empty( $ai_features['product_assistant'] )
+                || ! empty( $ai_features['influencer_square'] );
+
+            return [
+                'appointments' => ! empty( $features['appointments'] ),
+                'event_tickets'=> ! empty( $features['event_tickets'] ),
+                'pod'          => 'yes' === (string) get_post_meta( $pack_id, '_koopo_pd_pack_enabled', true ),
+                'ai_tools'     => $has_ai_tools,
+            ];
+        }
+
+        private function get_upgrade_entry_points_payload() {
+            return [
+                [
+                    'key'                 => 'selling',
+                    'label'               => __( 'Selling', 'koopo' ),
+                    'description'         => __( 'Create a storefront, publish products, and start taking payments.', 'koopo' ),
+                    'ctaLabel'            => __( 'Unlock selling', 'koopo' ),
+                    'requiredFeatureKeys' => [ 'selling' ],
+                ],
+                [
+                    'key'                 => 'appointments',
+                    'label'               => __( 'Appointments', 'koopo' ),
+                    'description'         => __( 'Enable services, schedules, and appointment bookings for clients.', 'koopo' ),
+                    'ctaLabel'            => __( 'Unlock bookings', 'koopo' ),
+                    'requiredFeatureKeys' => [ 'appointments' ],
+                ],
+                [
+                    'key'                 => 'event_tickets',
+                    'label'               => __( 'Events', 'koopo' ),
+                    'description'         => __( 'Monetize events with ticket sales and vendor event workflows.', 'koopo' ),
+                    'ctaLabel'            => __( 'Unlock events', 'koopo' ),
+                    'requiredFeatureKeys' => [ 'event_tickets' ],
+                ],
+                [
+                    'key'                 => 'pod',
+                    'label'               => __( 'Print on demand', 'koopo' ),
+                    'description'         => __( 'Connect POD providers and expand into custom product workflows.', 'koopo' ),
+                    'ctaLabel'            => __( 'Unlock POD', 'koopo' ),
+                    'requiredFeatureKeys' => [ 'pod' ],
+                ],
+                [
+                    'key'                 => 'ai_tools',
+                    'label'               => __( 'Premium AI tools', 'koopo' ),
+                    'description'         => __( 'Unlock premium AI assistants for supported Koopo workflows and creator tools.', 'koopo' ),
+                    'ctaLabel'            => __( 'Unlock AI tools', 'koopo' ),
+                    'requiredFeatureKeys' => [ 'ai_tools' ],
+                ],
+            ];
+        }
+
+        private function get_vendor_pack_id( $user_id ) {
+            return absint( get_user_meta( $user_id, 'product_package_id', true ) );
+        }
+
+        private function is_user_seller( $user_id ) {
+            if ( function_exists( 'dokan_is_user_seller' ) ) {
+                return (bool) dokan_is_user_seller( $user_id );
+            }
+
+            $user = get_userdata( $user_id );
+            if ( ! $user || ! is_array( $user->roles ) ) {
+                return false;
+            }
+
+            return in_array( 'seller', $user->roles, true );
+        }
+
+        private function is_vendor_pack_active( $user_id ) {
+            $pack_end = (string) get_user_meta( $user_id, 'product_pack_enddate', true );
+            if ( '' === $pack_end ) {
+                return false;
+            }
+
+            if ( 'unlimited' === strtolower( $pack_end ) ) {
+                return true;
+            }
+
+            $timezone = wp_timezone();
+            $end      = date_create_immutable_from_format( 'Y-m-d H:i:s', $pack_end, $timezone );
+            if ( ! $end ) {
+                try {
+                    $end = new DateTimeImmutable( $pack_end, $timezone );
+                } catch ( Exception $exception ) {
+                    unset( $exception );
+                    return false;
+                }
+            }
+
+            $now = new DateTimeImmutable( 'now', $timezone );
+
+            return $now < $end;
+        }
+
+        private function get_starter_pack_id( $user_id ) {
+            $pack_id = absint( get_option( 'koopo_vendor_starter_pack_id', 0 ) );
+            if ( $pack_id > 0 && $this->is_valid_pack_id( $pack_id ) ) {
+                return $pack_id;
+            }
+
+            return $this->find_first_free_pack_id();
+        }
+
+        private function is_valid_pack_id( $pack_id ) {
+            $product = wc_get_product( $pack_id );
+            return $product && $product->is_type( 'product_pack' );
+        }
+
+        private function find_first_free_pack_id() {
+            $query = new WP_Query(
+                [
+                    'post_type'      => 'product',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => 20,
+                    'fields'         => 'ids',
+                    'orderby'        => 'menu_order title',
+                    'order'          => 'ASC',
+                    'tax_query'      => [
+                        [
+                            'taxonomy' => 'product_type',
+                            'field'    => 'slug',
+                            'terms'    => 'product_pack',
+                        ],
+                    ],
+                    'no_found_rows'  => true,
+                ]
+            );
+
+            foreach ( (array) $query->posts as $pack_id ) {
+                $product = wc_get_product( $pack_id );
+                if ( $product && $this->get_pack_price_value( $product ) <= 0 ) {
+                    wp_reset_postdata();
+                    return absint( $pack_id );
+                }
+            }
+
+            wp_reset_postdata();
+            return 0;
+        }
+
+        private function get_pack_price_value( $product ) {
+            if ( ! $product || ! is_object( $product ) || ! method_exists( $product, 'get_price' ) ) {
+                return 0.0;
+            }
+
+            return (float) wc_format_decimal( $product->get_price(), 2 );
+        }
+
+        private function get_pack_period_label( $pack_id ) {
+            $period = (string) get_post_meta( $pack_id, '_dokan_subscription_period', true );
+            if ( '' === $period ) {
+                $period = (string) get_post_meta( $pack_id, '_subscription_period', true );
+            }
+
+            $interval = absint( get_post_meta( $pack_id, '_dokan_subscription_period_interval', true ) );
+            if ( $interval <= 0 ) {
+                $interval = absint( get_post_meta( $pack_id, '_subscription_period_interval', true ) );
+            }
+
+            if ( '' !== $period ) {
+                $interval = max( 1, $interval );
+                $period   = strtolower( $period );
+
+                if ( 1 === $interval ) {
+                    return $period;
+                }
+
+                return sprintf( '%d %ss', $interval, $period );
+            }
+
+            $validity = absint( get_post_meta( $pack_id, '_pack_validity', true ) );
+            if ( $validity > 0 ) {
+                return sprintf( '%d days', $validity );
+            }
+
+            return __( 'forever', 'koopo' );
+        }
+
+        private function build_pack_price_label( $price_value, $period_label ) {
+            if ( $price_value <= 0 ) {
+                return __( 'Free', 'koopo' );
+            }
+
+            $formatted = html_entity_decode( wp_strip_all_tags( wc_price( $price_value ) ), ENT_QUOTES, get_bloginfo( 'charset' ) );
+            if ( '' === $period_label || 'forever' === strtolower( $period_label ) ) {
+                return $formatted;
+            }
+
+            return sprintf( '%1$s / %2$s', $formatted, $period_label );
+        }
+
+        private function build_pack_highlights( $pack_id, $features, $period_label, $is_starter, $admin_commission ) {
+            $highlights    = [];
+            $product_limit = get_post_meta( $pack_id, '_no_of_product', true );
+
+            if ( '-1' === (string) $product_limit ) {
+                $highlights[] = __( 'Unlimited product listings', 'koopo' );
+            } elseif ( is_numeric( $product_limit ) && (int) $product_limit > 0 ) {
+                $highlights[] = sprintf( __( 'List up to %d products', 'koopo' ), (int) $product_limit );
+            }
+
+            if ( '' !== $period_label ) {
+                $highlights[] = sprintf( __( 'Billing cycle: %s', 'koopo' ), $period_label );
+            }
+
+            if ( $is_starter ) {
+                $highlights[] = __( 'Assigned automatically when a seller account is activated', 'koopo' );
+            } else {
+                $highlights[] = __( 'Includes Starter tier access automatically', 'koopo' );
+            }
+
+            foreach ( (array) $features as $feature ) {
+                if ( ! empty( $feature['enabled'] ) && ! empty( $feature['label'] ) && 'selling' !== $feature['key'] ) {
+                    $highlights[] = (string) $feature['label'];
+                }
+            }
+
+            if ( null !== $admin_commission ) {
+                $highlights[] = sprintf( __( 'Referral fee: %s%%', 'koopo' ), wc_format_decimal( $admin_commission, 2 ) );
+            }
+
+            return array_slice( array_values( array_unique( array_filter( $highlights ) ) ), 0, 6 );
+        }
+
+        private function build_pack_badge( $slug, $is_free ) {
+            if ( $is_free || false !== strpos( $slug, 'starter' ) || false !== strpos( $slug, 'free' ) ) {
+                return __( 'Free', 'koopo' );
+            }
+
+            if ( false !== strpos( $slug, 'entrepreneur' ) || false !== strpos( $slug, 'growth' ) ) {
+                return __( 'Growth', 'koopo' );
+            }
+
+            if ( false !== strpos( $slug, 'business' ) || false !== strpos( $slug, 'scale' ) ) {
+                return __( 'Scale', 'koopo' );
+            }
+
+            if ( false !== strpos( $slug, 'ultimate' ) || false !== strpos( $slug, 'premium' ) ) {
+                return __( 'Premium', 'koopo' );
+            }
+
+            return __( 'Plan', 'koopo' );
+        }
+
+        private function detect_pack_slug( $product_slug, $title ) {
+            $slug = sanitize_title( $product_slug );
+            if ( '' !== $slug ) {
+                return $slug;
+            }
+
+            return sanitize_title( $title );
+        }
+
+        private function get_recommended_pack_product_id( $packs ) {
+            $fallback = 0;
+
+            foreach ( (array) $packs as $pack ) {
+                if ( empty( $fallback ) && ! empty( $pack['productId'] ) ) {
+                    $fallback = (int) $pack['productId'];
+                }
+
+                $slug = isset( $pack['slug'] ) ? (string) $pack['slug'] : '';
+                if ( false !== strpos( $slug, 'business' ) && ! empty( $pack['productId'] ) ) {
+                    return (int) $pack['productId'];
+                }
+            }
+
+            return $fallback > 0 ? $fallback : null;
+        }
+
+        private function format_subscription_date( $value ) {
+            $timestamp = strtotime( (string) $value );
+            if ( ! $timestamp ) {
+                return (string) $value;
+            }
+
+            return wp_date( get_option( 'date_format' ), $timestamp );
         }
 
         private function get_privacy_settings_payload( $user_id ) {

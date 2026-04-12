@@ -100,7 +100,7 @@ class Koopo_Influencer_Square_Admin {
         ?>
         <div class="wrap koopo-is-admin">
             <h1><?php esc_html_e( 'Influencer Square', 'koopo' ); ?></h1>
-            <p><?php esc_html_e( 'Track article growth, engagement, and payout estimates for creators.', 'koopo' ); ?></p>
+            <p><?php esc_html_e( 'Track qualified article growth, engagement, and payout estimates for creators.', 'koopo' ); ?></p>
 
             <style>
                 .koopo-is-admin .koopo-is-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin: 18px 0; }
@@ -151,7 +151,7 @@ class Koopo_Influencer_Square_Admin {
                     </table>
                     <?php submit_button( __( 'Save Revenue Settings', 'koopo' ) ); ?>
                 </form>
-                <p class="koopo-is-note"><?php esc_html_e( 'Revenue and payout are currently estimated from views and your RPM/share settings. You can later replace this with real ad network revenue.', 'koopo' ); ?></p>
+                <p class="koopo-is-note"><?php esc_html_e( 'Revenue and payout are estimated from qualified views: one payout-eligible view per viewer, per article, per day, using logged-in identities or signed first-party visitor IDs. You can later replace this with real ad network revenue.', 'koopo' ); ?></p>
             </div>
 
             <div class="koopo-is-panel">
@@ -192,7 +192,7 @@ class Koopo_Influencer_Square_Admin {
                 <div class="koopo-is-grid">
                     <?php $this->metric_card( __( 'Authors', 'koopo' ), number_format_i18n( (int) $global['totals']['authors'] ) ); ?>
                     <?php $this->metric_card( __( 'Articles', 'koopo' ), number_format_i18n( (int) $global['totals']['articles'] ) ); ?>
-                    <?php $this->metric_card( __( 'Views', 'koopo' ), number_format_i18n( (int) $global['totals']['views'] ) ); ?>
+                    <?php $this->metric_card( __( 'Qualified Views', 'koopo' ), number_format_i18n( (int) $global['totals']['views'] ) ); ?>
                     <?php $this->metric_card( __( 'Comments', 'koopo' ), number_format_i18n( (int) $global['totals']['comments'] ) ); ?>
                     <?php $this->metric_card( __( 'Likes', 'koopo' ), number_format_i18n( (int) $global['totals']['likes'] ) ); ?>
                     <?php $this->metric_card( __( 'Dislikes', 'koopo' ), number_format_i18n( (int) $global['totals']['dislikes'] ) ); ?>
@@ -210,7 +210,7 @@ class Koopo_Influencer_Square_Admin {
                         <option value="0"><?php esc_html_e( 'Choose an author', 'koopo' ); ?></option>
                         <?php foreach ( $global['authors'] as $author_row ) : ?>
                             <option value="<?php echo esc_attr( (int) $author_row['author_id'] ); ?>" <?php selected( $selected_author, (int) $author_row['author_id'] ); ?>>
-                                <?php echo esc_html( $author_row['display_name'] . ' (' . number_format_i18n( (int) $author_row['views'] ) . ' views)' ); ?>
+                                <?php echo esc_html( $author_row['display_name'] . ' (' . number_format_i18n( (int) $author_row['views'] ) . ' qualified views)' ); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -231,7 +231,7 @@ class Koopo_Influencer_Square_Admin {
                     </h3>
                     <div class="koopo-is-grid">
                         <?php $this->metric_card( __( 'Articles', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['articles'] ) ); ?>
-                        <?php $this->metric_card( __( 'Views', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['views'] ) ); ?>
+                        <?php $this->metric_card( __( 'Qualified Views', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['views'] ) ); ?>
                         <?php $this->metric_card( __( 'Comments', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['comments'] ) ); ?>
                         <?php $this->metric_card( __( 'Likes', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['likes'] ) ); ?>
                         <?php $this->metric_card( __( 'Dislikes', 'koopo' ), number_format_i18n( (int) $selected_analytics['totals']['dislikes'] ) ); ?>
@@ -244,7 +244,7 @@ class Koopo_Influencer_Square_Admin {
                             <thead>
                                 <tr>
                                     <th><?php esc_html_e( 'Article', 'koopo' ); ?></th>
-                                    <th><?php esc_html_e( 'Views', 'koopo' ); ?></th>
+                                    <th><?php esc_html_e( 'Qualified Views', 'koopo' ); ?></th>
                                     <th><?php esc_html_e( 'Comments', 'koopo' ); ?></th>
                                     <th><?php esc_html_e( 'Likes', 'koopo' ); ?></th>
                                     <th><?php esc_html_e( 'Dislikes', 'koopo' ); ?></th>

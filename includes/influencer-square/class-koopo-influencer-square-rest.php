@@ -94,8 +94,12 @@ class Koopo_Influencer_Square_REST {
             return new WP_Error( 'invalid_post', __( 'Post not found.', 'koopo' ), array( 'status' => 404 ) );
         }
 
-        $dedupe = $this->build_view_dedupe_key();
-        $tracked = $this->analytics->track_view( $post_id, $dedupe );
+        $context = $this->analytics->get_current_request_view_context();
+        $tracked = false;
+
+        if ( ! empty( $context['can_track'] ) ) {
+            $tracked = $this->analytics->track_view( $post_id, $context['dedupe_key'], $context['rate_limit_key'], 'rest', $context['fingerprint_key'] );
+        }
 
         return rest_ensure_response(
             array(
@@ -163,22 +167,4 @@ class Koopo_Influencer_Square_REST {
 
         return get_current_user_id() === $author_id || current_user_can( 'manage_options' );
     }
-
-    private function build_view_dedupe_key() {
-        if ( is_user_logged_in() ) {
-            return 'u:' . get_current_user_id();
-        }
-
-        $ip = '';
-        if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
-            $parts = explode( ',', (string) $_SERVER['HTTP_X_FORWARDED_FOR'] );
-            $ip    = sanitize_text_field( trim( $parts[0] ) );
-        } elseif ( ! empty( $_SERVER['REMOTE_ADDR'] ) ) {
-            $ip = sanitize_text_field( (string) $_SERVER['REMOTE_ADDR'] );
-        }
-
-        $ua = ! empty( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( (string) $_SERVER['HTTP_USER_AGENT'] ) : '';
-        return 'g:' . md5( $ip . '|' . $ua );
-    }
 }
-

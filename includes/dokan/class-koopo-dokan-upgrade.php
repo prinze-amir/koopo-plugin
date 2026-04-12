@@ -144,6 +144,46 @@ class Koopo_Dokan_Upgrade {
         return $customer_id ?: '';
     }
 
+    private function resolve_vendor_id_from_request( WP_REST_Request $request ) {
+        $current_user_id = get_current_user_id();
+        $requested_id    = absint( $request->get_param( 'vendor_id' ) );
+
+        if ( ! $requested_id || $requested_id === $current_user_id ) {
+            return $current_user_id;
+        }
+
+        if ( current_user_can( 'manage_woocommerce' ) || current_user_can( 'manage_options' ) ) {
+            return $requested_id;
+        }
+
+        return $current_user_id;
+    }
+
+    private function debug_response_enabled() {
+        return defined( 'WP_DEBUG' ) && WP_DEBUG && current_user_can( 'manage_options' );
+    }
+
+    private function logging_enabled() {
+        $constant_enabled = defined( 'KOOPO_UPGRADE_DEBUG' ) && KOOPO_UPGRADE_DEBUG;
+        $filter_enabled   = (bool) apply_filters( 'koopo_upgrade_enable_logging', false );
+
+        return $constant_enabled || $filter_enabled;
+    }
+
+    private function maybe_add_debug_data( $payload, $debug_data ) {
+        if ( $this->debug_response_enabled() && ! empty( $debug_data ) ) {
+            $payload['_debug'] = $debug_data;
+        }
+
+        return $payload;
+    }
+
+    private function log( $message ) {
+        if ( $this->logging_enabled() ) {
+            error_log( (string) $message );
+        }
+    }
+
     public function register_routes() {
         register_rest_route( $this->namespace, '/upgrade/packs', [
             'methods'             => 'GET',
@@ -253,11 +293,11 @@ class Koopo_Dokan_Upgrade {
     }
 
     public function rest_calc( WP_REST_Request $request ) {
-        $vendor_id = $request->get_param( 'vendor_id' ) ? intval( $request->get_param( 'vendor_id' ) ) : get_current_user_id();
+        $vendor_id = $this->resolve_vendor_id_from_request( $request );
         $new_pack_id = intval( $request->get_param( 'new_pack_id' ) );
 
         if ( ! $vendor_id || ! $new_pack_id ) {
-            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing vendor_id or new_pack_id' ], 400 );
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing upgrade request details.' ], 400 );
         }
 
         $current_pack_id = get_user_meta( $vendor_id, 'product_package_id', true );
@@ -361,21 +401,23 @@ class Koopo_Dokan_Upgrade {
 
                 return rest_ensure_response( [
                     'success' => true,
-                    'data' => [
-                        'current_pack_id' => intval( $current_pack_id ),
-                        'current_price' => wc_format_decimal( $current_price, wc_get_price_decimals() ),
-                        'new_pack_id' => $new_pack_id,
-                        'new_price' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
-                        'days_remaining' => 0,
-                        'days_total' => 0,
-                        'credit' => wc_format_decimal( 0, wc_get_price_decimals() ),
-                        'first_payment' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
-                        '_debug' => [
+                    'data' => $this->maybe_add_debug_data(
+                        [
+                            'current_pack_id' => intval( $current_pack_id ),
+                            'current_price' => wc_format_decimal( $current_price, wc_get_price_decimals() ),
+                            'new_pack_id' => $new_pack_id,
+                            'new_price' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
+                            'days_remaining' => 0,
+                            'days_total' => 0,
+                            'credit' => wc_format_decimal( 0, wc_get_price_decimals() ),
+                            'first_payment' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
+                        ],
+                        [
                             'message' => 'Unlimited subscription and no product period meta - no proration',
                             'start_date' => $start_date,
                             'end_date' => $end_date,
-                        ],
-                    ],
+                        ]
+                    ),
                 ] );
             }
         }
@@ -403,12 +445,18 @@ class Koopo_Dokan_Upgrade {
                 'end_ts' => $end_ts,
                 'now' => $now,
             ];
-            dokan_log( 'Upgrade calc error - invalid dates: ' . json_encode( $debug ) );
-            return new WP_REST_Response( [
+            $this->log( 'Koopo Upgrade calc error - invalid dates.' );
+
+            $response = [
                 'success' => false,
                 'message' => 'Invalid subscription dates',
-                '_debug' => $debug,
-            ], 400 );
+            ];
+
+            if ( $this->debug_response_enabled() ) {
+                $response['_debug'] = $debug;
+            }
+
+            return new WP_REST_Response( $response, 400 );
         }
 
         // Calculate days
@@ -428,39 +476,41 @@ class Koopo_Dokan_Upgrade {
 
         return rest_ensure_response( [
             'success' => true,
-            'data' => [
-                'current_pack_id' => intval( $current_pack_id ),
-                'current_price' => wc_format_decimal( $current_price, wc_get_price_decimals() ),
-                'new_pack_id' => $new_pack_id,
-                'new_price' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
-                'days_remaining' => intval( $days_remaining ),
-                'days_total' => intval( $days_total ),
-                'credit' => wc_format_decimal( $credit, wc_get_price_decimals() ),
-                'first_payment' => wc_format_decimal( $first_payment, wc_get_price_decimals() ),
-                '_debug' => [
+            'data' => $this->maybe_add_debug_data(
+                [
+                    'current_pack_id' => intval( $current_pack_id ),
+                    'current_price' => wc_format_decimal( $current_price, wc_get_price_decimals() ),
+                    'new_pack_id' => $new_pack_id,
+                    'new_price' => wc_format_decimal( $new_price, wc_get_price_decimals() ),
+                    'days_remaining' => intval( $days_remaining ),
+                    'days_total' => intval( $days_total ),
+                    'credit' => wc_format_decimal( $credit, wc_get_price_decimals() ),
+                    'first_payment' => wc_format_decimal( $first_payment, wc_get_price_decimals() ),
+                ],
+                [
                     'start_date' => $start_date,
                     'end_date' => $end_date,
                     'start_ts' => $start_ts,
                     'end_ts' => $end_ts,
                     'now' => $now,
                     'derived' => $derived_debug,
-                ],
-            ],
+                ]
+            ),
         ] );
     }
 
     public function rest_pay( WP_REST_Request $request ) {
-        $vendor_id = $request->get_param( 'vendor_id' ) ? intval( $request->get_param( 'vendor_id' ) ) : get_current_user_id();
+        $vendor_id = $this->resolve_vendor_id_from_request( $request );
         $new_pack_id = intval( $request->get_param( 'new_pack_id' ) );
         $payment_method_id = $request->get_param( 'payment_method_id' ) ? sanitize_text_field( $request->get_param( 'payment_method_id' ) ) : '';
 
         if ( ! $vendor_id || ! $new_pack_id ) {
-            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing vendor_id or new_pack_id' ], 400 );
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing upgrade request details.' ], 400 );
         }
 
         // Recalculate to ensure consistency
         $calc_req = new WP_REST_Request( 'POST' );
-        $calc_req->set_body_params( [ 'vendor_id' => $vendor_id, 'new_pack_id' => $new_pack_id ] );
+        $calc_req->set_body_params( [ 'new_pack_id' => $new_pack_id ] );
         $calc_resp = $this->rest_calc( $calc_req );
 
         if ( is_wp_error( $calc_resp ) || empty( $calc_resp->data ) || empty( $calc_resp->data['success'] ) || ! isset( $calc_resp->data['data'] ) ) {
@@ -539,7 +589,7 @@ class Koopo_Dokan_Upgrade {
 
                         $activated_pack = get_user_meta( $vendor_id, 'product_package_id', true );
                         if ( intval( $activated_pack ) !== intval( $new_pack_id ) ) {
-                            error_log( "Koopo Upgrade (\$0 path): activate_subscription() did not set product_package_id. Manual fallback." );
+                            $this->log( "Koopo Upgrade (\$0 path): activate_subscription() did not set product_package_id. Manual fallback." );
                             $this->manual_activate_subscription( $vendor_id, $new_pack_id, $order );
                             $activation_method = 'manual_fallback';
                         }
@@ -560,7 +610,7 @@ class Koopo_Dokan_Upgrade {
                     $stripe_subscription_created = ! empty( $stripe_subscription['success'] );
 
                     if ( ! $stripe_subscription_created ) {
-                        error_log( 'Koopo Upgrade ($0 path): new Stripe subscription creation failed. Skipping old subscription cancellation.' );
+                        $this->log( 'Koopo Upgrade ($0 path): new Stripe subscription creation failed. Skipping old subscription cancellation.' );
                     }
                 }
 
@@ -587,14 +637,14 @@ class Koopo_Dokan_Upgrade {
                                         'metadata' => [ 'order_id' => '' ],
                                     ] );
                                 } catch ( \Throwable $meta_err ) {
-                                    error_log( 'Koopo Upgrade ($0 path): clear Stripe sub metadata failed: ' . $meta_err->getMessage() );
+                                    $this->log( 'Koopo Upgrade ($0 path): clear Stripe sub metadata failed.' );
                                 }
 
                                 // Now safe to cancel — webhook handler won't find vendor
                                 $stripe_client->subscriptions->cancel( $old_stripe_sub_id );
                             }
                         } catch ( \Throwable $stripe_err ) {
-                            error_log( 'Koopo Upgrade ($0 path): cancel old Stripe sub failed: ' . $stripe_err->getMessage() );
+                            $this->log( 'Koopo Upgrade ($0 path): cancel old Stripe sub failed.' );
                         }
                     }
 
@@ -639,7 +689,7 @@ class Koopo_Dokan_Upgrade {
 
             // Get the Stripe Customer ID so saved payment methods appear in the form.
             $stripe_customer_id = $this->get_stripe_customer_id( $vendor_id );
-            error_log( "Koopo Upgrade: stripe_customer_id={$stripe_customer_id}" );
+            $this->log( 'Koopo Upgrade: resolved Stripe customer for upgrade.' );
 
             $pi_args = [
                 'amount' => $amount_cents,
@@ -664,7 +714,7 @@ class Koopo_Dokan_Upgrade {
                 $pi = $stripe->paymentIntents->create( $pi_args );
             } catch ( \Throwable $pi_err ) {
                 if ( strpos( $pi_err->getMessage(), 'No such customer' ) !== false && ! empty( $pi_args['customer'] ) ) {
-                    error_log( "Koopo Upgrade: customer {$stripe_customer_id} invalid, retrying without customer" );
+                    $this->log( 'Koopo Upgrade: stored Stripe customer invalid, retrying without customer.' );
                     unset( $pi_args['customer'] );
                     $stripe_customer_id = '';
                     $pi = $stripe->paymentIntents->create( $pi_args );
@@ -714,8 +764,8 @@ class Koopo_Dokan_Upgrade {
             ]);
 
         } catch ( \Throwable $e ) {
-            error_log( 'Koopo Upgrade: EXCEPTION in rest_pay: ' . $e->getMessage() );
-            return new WP_REST_Response( [ 'success' => false, 'message' => $e->getMessage() ], 500 );
+            $this->log( 'Koopo Upgrade: exception in rest_pay.' );
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Unable to initiate the upgrade payment. Please try again.' ], 500 );
         }
     }
 
@@ -724,27 +774,20 @@ class Koopo_Dokan_Upgrade {
      * This endpoint triggers the native Dokan subscription activation flow
      */
     public function rest_finalize( WP_REST_Request $request ) {
-        error_log( 'Koopo Upgrade v' . self::VERSION . ': rest_finalize called.' );
-
-        $vendor_id = $request->get_param( 'vendor_id' ) ? intval( $request->get_param( 'vendor_id' ) ) : get_current_user_id();
+        $vendor_id = $this->resolve_vendor_id_from_request( $request );
         $order_id = intval( $request->get_param( 'order_id' ) );
         $payment_intent_id = $request->get_param( 'payment_intent_id' ) ? sanitize_text_field( $request->get_param( 'payment_intent_id' ) ) : '';
 
-        error_log( "Koopo Upgrade: vendor_id={$vendor_id}, order_id={$order_id}, pi_id={$payment_intent_id}" );
-
         // vendor_id and order_id are required; payment_intent_id is optional (only needed if payment was required)
         if ( ! $vendor_id || ! $order_id ) {
-            error_log( 'Koopo Upgrade: EARLY EXIT - missing vendor_id or order_id' );
-            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing vendor_id or order_id' ], 400 );
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Missing order information.' ], 400 );
         }
 
         $order = wc_get_order( $order_id );
         if ( ! $order ) {
-            error_log( "Koopo Upgrade: EARLY EXIT - order {$order_id} not found" );
             return new WP_REST_Response( [ 'success' => false, 'message' => 'Invalid order or unauthorized' ], 403 );
         }
         if ( $order->get_customer_id() != $vendor_id ) {
-            error_log( "Koopo Upgrade: EARLY EXIT - customer_id mismatch: order has {$order->get_customer_id()}, expected {$vendor_id}" );
             return new WP_REST_Response( [ 'success' => false, 'message' => 'Invalid order or unauthorized' ], 403 );
         }
 
@@ -757,7 +800,7 @@ class Koopo_Dokan_Upgrade {
                 break;
             }
         }
-        error_log( "Koopo Upgrade: new_pack_id={$new_pack_id}, order_items_count=" . count( $order_items ) );
+        $this->log( 'Koopo Upgrade: finalize request validated.' );
 
         $new_product = null;
         if ( $new_pack_id > 0 ) {
@@ -769,23 +812,23 @@ class Koopo_Dokan_Upgrade {
             if ( ! empty( $payment_intent_id ) ) {
                 $secret = $this->get_stripe_secret_key();
                 if ( empty( $secret ) ) {
-                    error_log( 'Koopo Upgrade: EARLY EXIT - Stripe key not configured' );
+                    $this->log( 'Koopo Upgrade: EARLY EXIT - Stripe key not configured' );
                     return new WP_REST_Response( [ 'success' => false, 'message' => 'Stripe key not configured' ], 500 );
                 }
 
                 $stripe = new \Stripe\StripeClient( $secret );
                 $intent = $stripe->paymentIntents->retrieve( $payment_intent_id );
-                error_log( "Koopo Upgrade: Stripe PI status = {$intent->status}" );
+                $this->log( "Koopo Upgrade: Stripe PI status = {$intent->status}" );
 
                 if ( $intent->status !== 'succeeded' ) {
-                    error_log( "Koopo Upgrade: EARLY EXIT - payment not succeeded: {$intent->status}" );
+                    $this->log( "Koopo Upgrade: EARLY EXIT - payment not succeeded: {$intent->status}" );
                     return new WP_REST_Response( [ 'success' => false, 'message' => 'Payment not confirmed: ' . $intent->status ], 400 );
                 }
 
                 $order->update_status( 'completed', 'Payment successful via Stripe. Subscription upgrade finalized.' );
-                error_log( 'Koopo Upgrade: order status updated to completed' );
+                $this->log( 'Koopo Upgrade: order status updated to completed' );
             } else {
-                error_log( 'Koopo Upgrade: no payment_intent_id - zero-amount path' );
+                $this->log( 'Koopo Upgrade: no payment_intent_id - zero-amount path' );
                 // No payment required (proration covered the cost or was zero-amount)
                 // Mark order as completed immediately
                 if ( $order->get_status() === 'pending' ) {
@@ -798,30 +841,30 @@ class Koopo_Dokan_Upgrade {
             // capture the old value first for cancellation.
             $previous_order_id = get_user_meta( $vendor_id, 'product_order_id', true );
             $old_stripe_sub_id = get_user_meta( $vendor_id, '_dokan_stripe_express_subscription_id', true );
-            error_log( "Koopo Upgrade: previous_order_id={$previous_order_id}, old_stripe_sub_id={$old_stripe_sub_id}" );
+            $this->log( "Koopo Upgrade: previous_order_id={$previous_order_id}, old_stripe_sub_id={$old_stripe_sub_id}" );
 
             // IMPORTANT: Activate new subscription BEFORE canceling old one.
             $activation_method = 'none';
             $class_exists = class_exists( '\WeDevs\DokanPro\Modules\Subscription\SubscriptionPack' );
-            error_log( "Koopo Upgrade: class_exists(SubscriptionPack)=" . ( $class_exists ? 'true' : 'false' ) . ", new_pack_id={$new_pack_id}" );
+            $this->log( "Koopo Upgrade: class_exists(SubscriptionPack)=" . ( $class_exists ? 'true' : 'false' ) . ", new_pack_id={$new_pack_id}" );
 
             if ( $new_pack_id > 0 ) {
                 if ( $class_exists ) {
                     $subscription = new \WeDevs\DokanPro\Modules\Subscription\SubscriptionPack( $new_pack_id, $vendor_id );
                     $subscription->activate_subscription( $order );
                     $activation_method = 'dokan_api';
-                    error_log( 'Koopo Upgrade: activate_subscription() called' );
+                    $this->log( 'Koopo Upgrade: activate_subscription() called' );
 
                     $activated_pack = get_user_meta( $vendor_id, 'product_package_id', true );
                     if ( intval( $activated_pack ) !== intval( $new_pack_id ) ) {
-                        error_log( "Koopo Upgrade: activate_subscription() did not set product_package_id ({$activated_pack}). Manual fallback." );
+                        $this->log( "Koopo Upgrade: activate_subscription() did not set product_package_id ({$activated_pack}). Manual fallback." );
                         $this->manual_activate_subscription( $vendor_id, $new_pack_id, $order );
                         $activation_method = 'manual_fallback';
                     } else {
-                        error_log( "Koopo Upgrade: activation verified - product_package_id={$activated_pack}" );
+                        $this->log( "Koopo Upgrade: activation verified - product_package_id={$activated_pack}" );
                     }
                 } else {
-                    error_log( 'Koopo Upgrade: SubscriptionPack class not found, using manual activation.' );
+                    $this->log( 'Koopo Upgrade: SubscriptionPack class not found, using manual activation.' );
                     $this->manual_activate_subscription( $vendor_id, $new_pack_id, $order );
                     $activation_method = 'manual_direct';
                 }
@@ -840,7 +883,7 @@ class Koopo_Dokan_Upgrade {
                 $stripe_subscription_created = ! empty( $stripe_subscription['success'] );
 
                 if ( ! $stripe_subscription_created ) {
-                    error_log( 'Koopo Upgrade: new Stripe subscription creation failed. Skipping old subscription cancellation.' );
+                    $this->log( 'Koopo Upgrade: new Stripe subscription creation failed. Skipping old subscription cancellation.' );
                 }
             }
 
@@ -867,7 +910,7 @@ class Koopo_Dokan_Upgrade {
                             if ( $old_order ) {
                                 $old_order->delete_meta_data( '_dokan_stripe_express_stripe_subscription_id' );
                                 $old_order->save();
-                                error_log( "Koopo Upgrade: cleared _dokan_stripe_express_stripe_subscription_id from old order {$previous_order_id}" );
+                                $this->log( "Koopo Upgrade: cleared _dokan_stripe_express_stripe_subscription_id from old order {$previous_order_id}" );
                             }
 
                             // Step 2: Clear the order_id from Stripe subscription metadata
@@ -876,30 +919,30 @@ class Koopo_Dokan_Upgrade {
                                 $stripe_client->subscriptions->update( $old_stripe_sub_id, [
                                     'metadata' => [ 'order_id' => '' ],
                                 ] );
-                                error_log( "Koopo Upgrade: cleared order_id metadata from Stripe sub {$old_stripe_sub_id}" );
+                                $this->log( "Koopo Upgrade: cleared order_id metadata from Stripe sub {$old_stripe_sub_id}" );
                             } catch ( \Throwable $meta_err ) {
-                                error_log( 'Koopo Upgrade: WARNING - clear Stripe sub metadata failed: ' . $meta_err->getMessage() );
+                                $this->log( 'Koopo Upgrade: WARNING - clear Stripe sub metadata failed: ' . $meta_err->getMessage() );
                             }
 
                             // Step 3: Now cancel the old Stripe subscription.
                             // The webhook will fire but get_vendor_id_by_subscription() will
                             // return null, so the handler exits without deleting anything.
                             $stripe_client->subscriptions->cancel( $old_stripe_sub_id );
-                            error_log( "Koopo Upgrade: old Stripe subscription {$old_stripe_sub_id} canceled" );
+                            $this->log( "Koopo Upgrade: old Stripe subscription {$old_stripe_sub_id} canceled" );
                         }
                     } catch ( \Throwable $stripe_err ) {
-                        error_log( 'Koopo Upgrade: WARNING - cancel old Stripe sub failed: ' . $stripe_err->getMessage() );
+                        $this->log( 'Koopo Upgrade: WARNING - cancel old Stripe sub failed: ' . $stripe_err->getMessage() );
                     }
                 }
 
                 // Mark old order as cancelled for WP-side cleanup
                 if ( $old_order && ! in_array( $old_order->get_status(), [ 'cancelled', 'refunded' ], true ) ) {
                     $old_order->update_status( 'cancelled', 'Subscription upgraded to new plan.' );
-                    error_log( "Koopo Upgrade: old order {$previous_order_id} marked as cancelled" );
+                    $this->log( "Koopo Upgrade: old order {$previous_order_id} marked as cancelled" );
                 }
             }
 
-            error_log( "Koopo Upgrade: finalize complete. activation_method={$activation_method}" );
+            $this->log( "Koopo Upgrade: finalize complete. activation_method={$activation_method}" );
 
             return rest_ensure_response([
                 'success' => true,
@@ -913,8 +956,8 @@ class Koopo_Dokan_Upgrade {
             ]);
 
         } catch ( \Throwable $e ) {
-            error_log( 'Koopo Upgrade: EXCEPTION in rest_finalize: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine() );
-            return new WP_REST_Response( [ 'success' => false, 'message' => $e->getMessage() ], 500 );
+            $this->log( 'Koopo Upgrade: exception in rest_finalize.' );
+            return new WP_REST_Response( [ 'success' => false, 'message' => 'Unable to finalize the subscription upgrade. Please contact support if this persists.' ], 500 );
         }
     }
 
@@ -927,10 +970,10 @@ class Koopo_Dokan_Upgrade {
         try {
             $secret = $this->get_stripe_secret_key();
             if ( empty( $secret ) ) {
-                error_log( 'Koopo Upgrade: cannot create Stripe sub - no secret key' );
+                $this->log( 'Koopo Upgrade: cannot create Stripe sub - no secret key' );
                 return [
                     'success' => false,
-                    'message' => 'No Stripe secret key configured',
+                    'message' => 'Recurring billing is not available at the moment.',
                 ];
             }
 
@@ -938,14 +981,14 @@ class Koopo_Dokan_Upgrade {
 
             // Get or create Stripe Customer ID (required for subscriptions)
             $customer_id = $this->get_stripe_customer_id( $vendor_id );
-            error_log( "Koopo Upgrade: create_stripe_subscription customer_id={$customer_id}" );
+            $this->log( "Koopo Upgrade: create_stripe_subscription customer_id={$customer_id}" );
 
             // If no customer stored, or customer is invalid, create one
             if ( ! empty( $customer_id ) ) {
                 try {
                     $stripe->customers->retrieve( $customer_id );
                 } catch ( \Throwable $e ) {
-                    error_log( "Koopo Upgrade: stored customer {$customer_id} invalid: {$e->getMessage()}" );
+                    $this->log( "Koopo Upgrade: stored customer {$customer_id} invalid: {$e->getMessage()}" );
                     $customer_id = '';
                 }
             }
@@ -967,7 +1010,7 @@ class Koopo_Dokan_Upgrade {
                 }
                 $cust_key = $is_test ? '_dokan_stripe_express_test_customer_id' : '_dokan_stripe_express_customer_id';
                 update_user_option( $vendor_id, $cust_key, $customer_id );
-                error_log( "Koopo Upgrade: created new Stripe customer {$customer_id}" );
+                $this->log( "Koopo Upgrade: created new Stripe customer {$customer_id}" );
             }
 
             // Read billing config from product meta
@@ -982,10 +1025,10 @@ class Koopo_Dokan_Upgrade {
             $prod_name = $product ? $product->get_name() : 'Subscription #' . $pack_id;
 
             if ( $price <= 0 || empty( $period ) ) {
-                error_log( "Koopo Upgrade: skipping Stripe sub - price={$price}, period={$period}" );
+                $this->log( "Koopo Upgrade: skipping Stripe sub - price={$price}, period={$period}" );
                 return [
                     'success' => false,
-                    'message' => 'Pack is not eligible for recurring Stripe subscription',
+                    'message' => 'This pack is not eligible for recurring billing.',
                 ];
             }
 
@@ -1026,7 +1069,7 @@ class Koopo_Dokan_Upgrade {
                     $pi = $stripe->paymentIntents->retrieve( $pi_id );
                     $default_pm = $pi->payment_method;
                 } catch ( \Throwable $e ) {
-                    error_log( 'Koopo Upgrade: could not retrieve PI for default_payment_method: ' . $e->getMessage() );
+                    $this->log( 'Koopo Upgrade: could not retrieve PI for default_payment_method: ' . $e->getMessage() );
                 }
             }
 
@@ -1048,7 +1091,7 @@ class Koopo_Dokan_Upgrade {
             }
 
             $stripe_sub = $stripe->subscriptions->create( $sub_args );
-            error_log( "Koopo Upgrade: Stripe Subscription created: {$stripe_sub->id}" );
+            $this->log( "Koopo Upgrade: Stripe Subscription created: {$stripe_sub->id}" );
 
             // Store the new subscription ID in the same meta keys Dokan uses.
             // Include debug key so webhook vendor lookup always follows the new sub ID.
@@ -1076,10 +1119,10 @@ class Koopo_Dokan_Upgrade {
             ];
 
         } catch ( \Throwable $e ) {
-            error_log( 'Koopo Upgrade: FAILED to create Stripe Subscription: ' . $e->getMessage() );
+            $this->log( 'Koopo Upgrade: FAILED to create Stripe Subscription: ' . $e->getMessage() );
             return [
                 'success' => false,
-                'message' => $e->getMessage(),
+                'message' => 'Recurring billing could not be created.',
             ];
         }
     }
@@ -1092,11 +1135,11 @@ class Koopo_Dokan_Upgrade {
     private function manual_activate_subscription( $vendor_id, $pack_id, $order ) {
         $product = wc_get_product( $pack_id );
         if ( ! $product ) {
-            error_log( "Koopo Upgrade: manual_activate_subscription failed - product {$pack_id} not found." );
+            $this->log( "Koopo Upgrade: manual_activate_subscription failed - product {$pack_id} not found." );
             return;
         }
 
-        error_log( "Koopo Upgrade: Running manual subscription activation for vendor {$vendor_id}, pack {$pack_id}." );
+        $this->log( "Koopo Upgrade: Running manual subscription activation for vendor {$vendor_id}, pack {$pack_id}." );
 
         update_user_meta( $vendor_id, 'can_post_product', '1' );
         update_user_meta( $vendor_id, 'product_package_id', $pack_id );
@@ -1159,7 +1202,7 @@ class Koopo_Dokan_Upgrade {
 
         do_action( 'dokan_vendor_purchased_subscription', $vendor_id );
 
-        error_log( "Koopo Upgrade: Manual subscription activation complete for vendor {$vendor_id}. End date: {$end_date}" );
+        $this->log( "Koopo Upgrade: Manual subscription activation complete for vendor {$vendor_id}. End date: {$end_date}" );
     }
 
     /**

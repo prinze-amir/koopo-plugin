@@ -42,7 +42,6 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': KoopoUpgradeData.nonce },
                     body: JSON.stringify({
-                        vendor_id: KoopoUpgradeData.currentUserId,
                         order_id: orderId,
                         payment_intent_id: piId
                     })
@@ -263,7 +262,7 @@
         fetch( KoopoUpgradeData.restUrl + '/calc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': KoopoUpgradeData.nonce },
-            body: JSON.stringify({ vendor_id: KoopoUpgradeData.currentUserId, new_pack_id: selectedPackId })
+            body: JSON.stringify({ new_pack_id: selectedPackId })
         }).then(r => r.json()).then(resp => {
             if ( ! resp.success ) {
                 hidePayLoadingIndicator();
@@ -280,14 +279,13 @@
             $('#koopo-breakdown').html(html);
             
             // Now call /pay to get clientSecret, then init Stripe
-            fetch( KoopoUpgradeData.restUrl + '/pay', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': KoopoUpgradeData.nonce },
-                body: JSON.stringify({
-                    vendor_id: KoopoUpgradeData.currentUserId,
-                    new_pack_id: selectedPackId
-                })
-            }).then(r => r.json()).then(payResp => {
+                fetch( KoopoUpgradeData.restUrl + '/pay', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': KoopoUpgradeData.nonce },
+                    body: JSON.stringify({
+                        new_pack_id: selectedPackId
+                    })
+                }).then(r => r.json()).then(payResp => {
                 if ( ! payResp.success ) {
                     hidePayLoadingIndicator();
                     $('#koopo-breakdown').append('<p style="color:red;">Error: ' + (payResp.message || 'payment creation failed') + '</p>');
@@ -418,7 +416,6 @@
             return;
         }
         var payload = {
-            vendor_id: KoopoUpgradeData.currentUserId,
             order_id: window.koopo_order_id
         };
         // Only send payment_intent_id if payment was required

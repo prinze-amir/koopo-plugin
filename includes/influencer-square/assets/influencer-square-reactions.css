@@ -19,6 +19,10 @@
     flex-wrap: wrap;
 }
 
+.koopo-is-reactions__support {
+    margin-top: 16px;
+}
+
 .koopo-is-reactions__buttons .koopo-is-btn {
     border: 1px solid #cfd5e2;
     border-radius: 999px;
@@ -67,4 +71,3 @@
         justify-content: center;
     }
 }
-

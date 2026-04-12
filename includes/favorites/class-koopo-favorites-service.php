@@ -8,6 +8,8 @@ class Koopo_Favorites_Service {
     const USER_META_LISTS           = 'koopo_favorites_lists';
     const OPTION_ENABLED_POST_TYPES = 'koopo_favorites_enabled_post_types';
     const OPTION_AUTO_DISPLAY       = 'koopo_favorites_auto_display';
+    const OPTION_PUBLIC_INDEX       = 'koopo_favorites_public_index';
+    const OPTION_PUBLIC_INDEX_READY = 'koopo_favorites_public_index_ready';
     const DEFAULT_LIST_ID           = 'koopo-default-favorites';
 
     public function get_default_enabled_post_types() {
@@ -568,7 +570,10 @@ class Koopo_Favorites_Service {
     }
 
     private function save_user_lists( $user_id, $lists ) {
-        update_user_meta( $user_id, self::USER_META_LISTS, array_values( $lists ) );
+        $normalized_lists = array_values( $lists );
+
+        update_user_meta( $user_id, self::USER_META_LISTS, $normalized_lists );
+        $this->sync_public_index_for_user( $user_id, $normalized_lists );
     }
 
     private function normalize_list_data( $list ) {
@@ -771,9 +776,49 @@ class Koopo_Favorites_Service {
             return null;
         }
 
+        $index = $this->get_public_index();
+        if ( empty( $index[ $slug ]['user_id'] ) || empty( $index[ $slug ]['list_id'] ) ) {
+            return null;
+        }
+
+        $user_id = absint( $index[ $slug ]['user_id'] );
+        $list_id = sanitize_text_field( (string) $index[ $slug ]['list_id'] );
+        $user    = get_userdata( $user_id );
+
+        if ( ! $user instanceof WP_User ) {
+            return null;
+        }
+
+        $list = $this->get_list_by_id( $user_id, $list_id );
+        if ( empty( $list ) || empty( $list['is_public'] ) || $slug !== $list['slug'] ) {
+            $this->sync_public_index_for_user( $user_id, $this->get_user_lists( $user_id ) );
+            return null;
+        }
+
+        return array(
+            'user' => $user,
+            'list' => $list,
+        );
+    }
+
+    private function get_public_index() {
+        $index = get_option( self::OPTION_PUBLIC_INDEX, null );
+        $ready = (int) get_option( self::OPTION_PUBLIC_INDEX_READY, 0 );
+
+        if ( is_array( $index ) && 1 === $ready ) {
+            return $index;
+        }
+
+        $index = $this->rebuild_public_index();
+
+        return $index;
+    }
+
+    private function rebuild_public_index() {
+        $index = array();
         $users = get_users(
             array(
-                'fields'   => array( 'ID', 'display_name' ),
+                'fields'   => array( 'ID' ),
                 'meta_key' => self::USER_META_LISTS,
                 'number'   => -1,
             )
@@ -782,16 +827,58 @@ class Koopo_Favorites_Service {
         foreach ( $users as $user ) {
             $lists = $this->get_user_lists( $user->ID );
             foreach ( $lists as $list ) {
-                if ( ! empty( $list['is_public'] ) && $slug === $list['slug'] ) {
-                    return array(
-                        'user' => $user,
-                        'list' => $list,
-                    );
+                if ( empty( $list['is_public'] ) || empty( $list['slug'] ) ) {
+                    continue;
                 }
+
+                $index[ $list['slug'] ] = array(
+                    'user_id' => (int) $user->ID,
+                    'list_id' => $list['id'],
+                );
             }
         }
 
-        return null;
+        update_option( self::OPTION_PUBLIC_INDEX, $index, false );
+        update_option( self::OPTION_PUBLIC_INDEX_READY, 1, false );
+
+        return $index;
+    }
+
+    private function sync_public_index_for_user( $user_id, $lists ) {
+        $user_id = absint( $user_id );
+        if ( ! $user_id ) {
+            return;
+        }
+
+        $ready = (int) get_option( self::OPTION_PUBLIC_INDEX_READY, 0 );
+        if ( 1 !== $ready ) {
+            $this->rebuild_public_index();
+            return;
+        }
+
+        $index = get_option( self::OPTION_PUBLIC_INDEX, array() );
+        if ( ! is_array( $index ) ) {
+            $index = array();
+        }
+
+        foreach ( $index as $slug => $entry ) {
+            if ( isset( $entry['user_id'] ) && (int) $entry['user_id'] === $user_id ) {
+                unset( $index[ $slug ] );
+            }
+        }
+
+        foreach ( (array) $lists as $list ) {
+            if ( empty( $list['is_public'] ) || empty( $list['slug'] ) || empty( $list['id'] ) ) {
+                continue;
+            }
+
+            $index[ $list['slug'] ] = array(
+                'user_id' => $user_id,
+                'list_id' => $list['id'],
+            );
+        }
+
+        update_option( self::OPTION_PUBLIC_INDEX, $index, false );
     }
 
     private function get_post_type_label( $post_type ) {

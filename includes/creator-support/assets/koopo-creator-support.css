@@ -1,0 +1,270 @@
+.koopo-creator-support {
+    --kcs-accent: #ffba12;
+    --kcs-surface: #ffffff;
+    --kcs-text: #111111;
+    --kcs-muted: #626262;
+    --kcs-border: rgba(17, 17, 17, 0.12);
+    --kcs-shadow: 0 20px 50px rgba(17, 17, 17, 0.12);
+    display: grid;
+    gap: 14px;
+}
+
+.koopo-creator-support--compact {
+    align-items: start;
+}
+
+.koopo-creator-support--panel {
+    padding: 22px;
+    border: 1px solid var(--kcs-border);
+    border-radius: 24px;
+    background:
+        radial-gradient(circle at top right, rgba(255, 186, 18, 0.18), transparent 36%),
+        linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+    box-shadow: var(--kcs-shadow);
+}
+
+.koopo-creator-support__mount--buddyblog {
+    margin: 0 0 24px;
+}
+
+.koopo-creator-support__copy {
+    display: grid;
+    gap: 6px;
+}
+
+.koopo-creator-support__copy h3,
+.koopo-creator-support__copy p,
+.koopo-creator-support__status,
+.koopo-creator-support__note,
+.koopo-creator-support__modal-text,
+.koopo-creator-support__field span {
+    margin: 0;
+}
+
+.koopo-creator-support__copy h3 {
+    font-size: 1.25rem;
+    line-height: 1.15;
+    color: var(--kcs-text);
+}
+
+.koopo-creator-support__copy p,
+.koopo-creator-support__note,
+.koopo-creator-support__status,
+.koopo-creator-support__modal-text,
+.koopo-creator-support__field span {
+    color: var(--kcs-muted);
+}
+
+.koopo-creator-support__eyebrow {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--kcs-accent);
+}
+
+.koopo-creator-support__actions {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+}
+
+.koopo-creator-support__actions.is-enabled .koopo-creator-support__button--secondary {
+    cursor: default;
+    opacity: 0.92;
+}
+
+.koopo-creator-support__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 18px;
+    border: 1px solid #111111;
+    border-radius: 999px;
+    background: #111111;
+    color: #ffffff;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+    cursor: pointer;
+    box-shadow: 0 10px 24px rgba(17, 17, 17, 0.18);
+}
+
+.koopo-creator-support__button:hover,
+.koopo-creator-support__button:focus-visible,
+.koopo-creator-support__preset:hover,
+.koopo-creator-support__preset:focus-visible {
+    background: var(--kcs-accent);
+    border-color: var(--kcs-accent);
+    color: #111111;
+    transform: translateY(-1px);
+}
+
+.koopo-creator-support__button:active,
+.koopo-creator-support__preset:active {
+    transform: translateY(1px) scale(0.98);
+}
+
+.koopo-creator-support__button[disabled] {
+    cursor: wait;
+    opacity: 0.78;
+}
+
+.koopo-creator-support__button--secondary {
+    background: #1f1f1f;
+}
+
+.koopo-creator-support__button--ghost {
+    background: #ffffff;
+    color: #111111;
+    box-shadow: none;
+}
+
+.koopo-creator-support__button-icon {
+    display: inline-flex;
+    width: 18px;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    font-size: 0.78rem;
+}
+
+.koopo-creator-support__button:hover .koopo-creator-support__button-icon,
+.koopo-creator-support__button:focus-visible .koopo-creator-support__button-icon {
+    background: rgba(17, 17, 17, 0.14);
+}
+
+.koopo-creator-support__note a {
+    margin-left: 6px;
+    color: #111111;
+    font-weight: 700;
+}
+
+.koopo-creator-support__modal[hidden] {
+    display: none;
+}
+
+.koopo-creator-support__modal {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+}
+
+.koopo-creator-support__modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 17, 17, 0.54);
+    backdrop-filter: blur(6px);
+}
+
+.koopo-creator-support__modal-panel {
+    position: relative;
+    width: min(100% - 32px, 520px);
+    margin: 8vh auto 0;
+    padding: 28px;
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at top right, rgba(255, 186, 18, 0.22), transparent 34%),
+        linear-gradient(180deg, #ffffff 0%, #fff9ec 100%);
+    box-shadow: 0 28px 60px rgba(17, 17, 17, 0.24);
+}
+
+.koopo-creator-support__modal-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(17, 17, 17, 0.08);
+    color: #111111;
+    font-size: 1.5rem;
+    padding: 7px 10px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.koopo-creator-support__form {
+    display: grid;
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.koopo-creator-support__preset-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.koopo-creator-support__preset {
+    min-width: 72px;
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid var(--kcs-border);
+    border-radius: 999px;
+    background: #ffffff;
+    color: #111111;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.koopo-creator-support__field {
+    display: grid;
+    gap: 8px;
+}
+
+.koopo-creator-support__field input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 16px;
+    border: 1px solid rgba(17, 17, 17, 0.16);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #111111;
+}
+
+.koopo-creator-support__field input:focus {
+    outline: 2px solid rgba(255, 186, 18, 0.28);
+    border-color: var(--kcs-accent);
+}
+
+.koopo-creator-support__modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+@media (max-width: 640px) {
+
+    .koopo-creator-support--panel,
+    .koopo-creator-support__modal-panel {
+        padding: 20px;
+        border-radius: 22px;
+    }
+
+    .koopo-creator-support__modal-actions,
+    .koopo-creator-support__preset-grid {
+        display: grid;
+    }
+
+    .koopo-creator-support__modal-actions .koopo-creator-support__button,
+    .koopo-creator-support__preset {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .koopo-creator-support__button,
+    .koopo-creator-support__preset {
+        transition: none;
+    }
+}

@@ -21,6 +21,18 @@ class Koopo_Influencer_Square {
         return self::$instance;
     }
 
+    public static function activate() {
+        $instance = self::instance();
+        $instance->analytics->maybe_install_schema();
+        $instance->analytics->maybe_schedule_maintenance();
+        $instance->analytics->process_backfill_batch();
+    }
+
+    public static function deactivate() {
+        wp_clear_scheduled_hook( 'koopo_is_cleanup_view_dedupe' );
+        wp_clear_scheduled_hook( 'koopo_is_backfill_post_stats' );
+    }
+
     private function __construct() {
         $this->analytics = new Koopo_Influencer_Square_Analytics();
         $this->rest      = new Koopo_Influencer_Square_REST( $this->analytics );
@@ -97,22 +109,31 @@ class Koopo_Influencer_Square {
         $show_before = $this->analytics->is_reaction_ui_before_content_enabled();
         $show_after  = $this->analytics->is_reaction_ui_after_content_enabled();
 
-        if ( ! $show_before && ! $show_after ) {
-            return $content;
+        $stats = $this->analytics->get_post_stats( $post_id, get_current_user_id() );
+        $before_ui = '';
+        $after_ui  = '';
+
+        if ( $show_before ) {
+            $before_ui = $this->render_reaction_ui( $stats, ! $show_after );
         }
 
-        $stats = $this->analytics->get_post_stats( $post_id, get_current_user_id() );
-        $ui    = $this->render_reaction_ui( $stats );
+        if ( $show_after ) {
+            $after_ui = $this->render_reaction_ui( $stats, true );
+        }
+
+        if ( ! $show_before && ! $show_after ) {
+            $after_ui = $this->render_post_donate_ui( $post_id );
+        }
 
         if ( $show_before && $show_after ) {
-            return $ui . $content . $ui;
+            return $before_ui . $content . $after_ui;
         }
 
         if ( $show_before ) {
-            return $ui . $content;
+            return $before_ui . $content;
         }
 
-        return $content . $ui;
+        return $content . $after_ui;
     }
 
     public function render_dashboard_shortcode( $atts ) {
@@ -175,7 +196,7 @@ class Koopo_Influencer_Square {
             </header>
 
             <div class="koopo-is-dashboard__cards">
-                <?php echo $this->dashboard_card( __( 'Total Views', 'koopo' ), number_format_i18n( (int) $totals['views'] ) ); ?>
+                <?php echo $this->dashboard_card( __( 'Qualified Views', 'koopo' ), number_format_i18n( (int) $totals['views'] ) ); ?>
                 <?php echo $this->dashboard_card( __( 'Articles', 'koopo' ), number_format_i18n( (int) $totals['articles'] ) ); ?>
                 <?php echo $this->dashboard_card( __( 'Comments', 'koopo' ), number_format_i18n( (int) $totals['comments'] ) ); ?>
                 <?php echo $this->dashboard_card( __( 'Likes', 'koopo' ), number_format_i18n( (int) $totals['likes'] ) ); ?>
@@ -190,6 +211,7 @@ class Koopo_Influencer_Square {
                 <div class="koopo-is-dashboard__meta">
                     <span><?php esc_html_e( 'Revenue Model:', 'koopo' ); ?> <?php echo esc_html( '$' . number_format_i18n( (float) $analytics['settings']['ad_rpm'], 2 ) ); ?> RPM</span>
                     <span><?php esc_html_e( 'Creator Share:', 'koopo' ); ?> <?php echo esc_html( number_format_i18n( (float) $analytics['settings']['creator_share_percent'], 2 ) . '%' ); ?></span>
+                    <span><?php esc_html_e( 'View Policy:', 'koopo' ); ?> <?php esc_html_e( 'one qualified view per viewer, per article, per day', 'koopo' ); ?></span>
                 </div>
             <?php endif; ?>
 
@@ -220,7 +242,7 @@ class Koopo_Influencer_Square {
                     <thead>
                         <tr>
                             <th><?php esc_html_e( 'Article', 'koopo' ); ?></th>
-                            <th><?php esc_html_e( 'Views', 'koopo' ); ?></th>
+                            <th><?php esc_html_e( 'Qualified Views', 'koopo' ); ?></th>
                             <th><?php esc_html_e( 'Comments', 'koopo' ); ?></th>
                             <th><?php esc_html_e( 'Likes', 'koopo' ); ?></th>
                             <th><?php esc_html_e( 'Dislikes', 'koopo' ); ?></th>
@@ -261,7 +283,7 @@ class Koopo_Influencer_Square {
         return ob_get_clean();
     }
 
-    private function render_reaction_ui( $stats ) {
+    private function render_reaction_ui( $stats, $include_donate = false ) {
         $post_id          = (int) $stats['post_id'];
         $likes            = (int) $stats['likes'];
         $dislikes         = (int) $stats['dislikes'];
@@ -283,9 +305,39 @@ class Koopo_Influencer_Square {
                     <span class="koopo-is-count" data-count-for="dislike"><?php echo esc_html( number_format_i18n( $dislikes ) ); ?></span>
                 </button>
             </div>
+            <?php if ( $include_donate ) : ?>
+                <div class="koopo-is-reactions__support">
+                    <?php echo $this->render_post_donate_ui( $post_id ); ?>
+                </div>
+            <?php endif; ?>
         </div>
         <?php
         return ob_get_clean();
+    }
+
+    private function render_post_donate_ui( $post_id ) {
+        $post_id = absint( (int) $post_id );
+        if ( ! $post_id || ! class_exists( 'Koopo_Creator_Support' ) ) {
+            return '';
+        }
+
+        $creator_id = absint( (int) get_post_field( 'post_author', $post_id ) );
+        if ( ! $creator_id ) {
+            return '';
+        }
+
+        return Koopo_Creator_Support::instance()->render_support_block(
+            array(
+                'creator_id'        => $creator_id,
+                'context_post_id'   => $post_id,
+                'context_post_type' => get_post_type( $post_id ),
+                'module'            => 'influencer_square',
+                'surface'           => 'single_post',
+                'variant'           => 'compact',
+                'label'             => __( 'Donate', 'koopo' ),
+                'class_name'        => 'koopo-is-donate-cta',
+            )
+        );
     }
 
     private function dashboard_card( $label, $value, $type = 'default' ) {
