@@ -739,7 +739,8 @@ class Koopo_Creator_Support_Service {
             }
         }
 
-        return (string) get_the_author_meta( 'display_name', $creator_id );
+        $fallback = (string) get_the_author_meta( 'display_name', $creator_id );
+        return function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $creator_id, $fallback ) : $fallback;
     }
 
     private function support_product_warning_text( $creator_name ) {

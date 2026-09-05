@@ -3,12 +3,41 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.55
+ * Version: 2.58
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
 
 define( 'KOOPO_PATH', plugin_dir_path( __FILE__ ) );
+
+function koopo_install_commerce_native_checkout_mu_plugin() {
+    $source = plugin_dir_path( __FILE__ ) . 'includes/commerce/koopo-commerce-native-checkout-mu.php';
+    $target_dir = WP_CONTENT_DIR . '/mu-plugins';
+    $target = $target_dir . '/koopo-commerce-native-checkout.php';
+
+    if ( ! file_exists( $source ) ) {
+        return false;
+    }
+
+    if ( ! is_dir( $target_dir ) ) {
+        wp_mkdir_p( $target_dir );
+    }
+
+    if ( ! is_dir( $target_dir ) || ! is_writable( $target_dir ) ) {
+        return false;
+    }
+
+    $source_hash = md5_file( $source );
+    $target_hash = file_exists( $target ) ? md5_file( $target ) : '';
+    if ( $source_hash && $source_hash === $target_hash ) {
+        return true;
+    }
+
+    return copy( $source, $target );
+}
+
+register_activation_hook( __FILE__, 'koopo_install_commerce_native_checkout_mu_plugin' );
+add_action( 'plugins_loaded', 'koopo_install_commerce_native_checkout_mu_plugin', 1 );
 
 add_action( 'plugins_loaded', 'kb_load_textdomain' );
 function kb_load_textdomain() {
@@ -54,6 +83,17 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/vendor-starter-p
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-profile-tabs.php';
 }
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-poll-permissions.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-poll-permissions.php';
+    Koopo_BuddyBoss_Poll_Permissions::boot();
+}
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-display-name.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/Buddy boss/class-koopo-buddyboss-display-name.php';
+    if ( class_exists( 'Koopo_BuddyBoss_Display_Name' ) ) {
+        $koopo_buddyboss_display_name = new Koopo_BuddyBoss_Display_Name();
+        $koopo_buddyboss_display_name->init();
+    }
+}
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/class-koopo-account-settings-rest.php';
 }
@@ -61,6 +101,13 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/creator-support/class-
     require_once plugin_dir_path( __FILE__ ) . 'includes/creator-support/class-koopo-creator-support.php';
     if ( class_exists( 'Koopo_Creator_Support' ) ) {
         Koopo_Creator_Support::instance();
+    }
+}
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/sms-auth/class-koopo-sms-auth.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/sms-auth/class-koopo-sms-auth.php';
+    if ( class_exists( 'Koopo_SMS_Auth' ) ) {
+        register_activation_hook( __FILE__, array( 'Koopo_SMS_Auth', 'activate' ) );
+        Koopo_SMS_Auth::instance();
     }
 }
 // Koopo Dokan upgrade modal integration
@@ -71,6 +118,20 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/dokan/koopo-dokan-upgr
 // GeoDirectory Location Manager: restrict footer modal/script to GeoDirectory archive/search pages only.
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/geodir-location-manager-allowlist.php' ) ) {
     require_once plugin_dir_path( __FILE__ ) . 'includes/geodir-location-manager-allowlist.php';
+}
+// GeoDirectory listing/event video uploads through Koopo Video + Bunny Stream.
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/geodir-bunny-video/class-koopo-geodir-bunny-video.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/geodir-bunny-video/class-koopo-geodir-bunny-video.php';
+    if ( class_exists( 'Koopo_Geodir_Bunny_Video' ) ) {
+        Koopo_Geodir_Bunny_Video::instance();
+    }
+}
+// Published products that are discoverable only from their linked GeoDirectory Place.
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/commerce/class-koopo-place-only-products.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/commerce/class-koopo-place-only-products.php';
+    if ( class_exists( 'Koopo_Place_Only_Products' ) ) {
+        Koopo_Place_Only_Products::boot();
+    }
 }
 // BuddyBoss/Woo/Dokan registration bridge + stale pending cleanup.
 if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/registration-bridge.php' ) ) {

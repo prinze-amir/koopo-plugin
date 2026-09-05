@@ -528,7 +528,7 @@ class Koopo_Influencer_Square_Analytics {
         $data = array(
             'author' => array(
                 'id'           => (int) $author_id,
-                'display_name' => $author->display_name,
+                'display_name' => function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $author_id, $author->display_name ) : $author->display_name,
                 'email'        => $author->user_email,
             ),
             'settings' => array(
@@ -578,7 +578,7 @@ class Koopo_Influencer_Square_Analytics {
 
             $authors[] = array(
                 'author_id'         => $author_id,
-                'display_name'      => $user instanceof WP_User ? $user->display_name : sprintf( __( 'Author #%d', 'koopo' ), $author_id ),
+                'display_name'      => $user instanceof WP_User && function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $author_id, $user->display_name ) : ( $user instanceof WP_User ? $user->display_name : sprintf( __( 'Author #%d', 'koopo' ), $author_id ) ),
                 'articles'          => (int) $row['articles'],
                 'views'             => (int) $row['views'],
                 'likes'             => (int) $row['likes'],
@@ -601,7 +601,7 @@ class Koopo_Influencer_Square_Analytics {
                 'id'                => $post_id,
                 'title'             => get_the_title( $post_id ),
                 'author_id'         => $author_id,
-                'author_name'       => $user instanceof WP_User ? $user->display_name : sprintf( __( 'Author #%d', 'koopo' ), $author_id ),
+                'author_name'       => $user instanceof WP_User && function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $author_id, $user->display_name ) : ( $user instanceof WP_User ? $user->display_name : sprintf( __( 'Author #%d', 'koopo' ), $author_id ) ),
                 'views'             => (int) $row['views'],
                 'raw_views'         => (int) $row['raw_views'],
                 'view_policy'       => self::VIEW_POLICY,

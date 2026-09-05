@@ -144,7 +144,7 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
             $pack_id = absint( apply_filters( 'koopo_vendor_starter_pack_id', $pack_id, $user_id ) );
 
             if ( $pack_id > 0 ) {
-                return $this->is_valid_pack_id( $pack_id ) ? $pack_id : 0;
+                return $this->is_valid_pack_id( $pack_id, $user_id ) ? $pack_id : 0;
             }
 
             $auto_detect = (bool) apply_filters( 'koopo_vendor_starter_pack_auto_detect', true, $user_id );
@@ -152,16 +152,24 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
                 return 0;
             }
 
-            return $this->find_first_free_pack_id();
+            return $this->find_starter_pack_id( $user_id );
         }
 
-        private function is_valid_pack_id( $pack_id ) {
+        private function is_valid_pack_id( $pack_id, $user_id ) {
             $product = wc_get_product( $pack_id );
 
-            return $product && $product->is_type( 'product_pack' );
+            if ( ! $product || ! $product->is_type( 'product_pack' ) ) {
+                return false;
+            }
+
+            if ( class_exists( '\\DokanPro\\Modules\\Subscription\\Helper' ) ) {
+                return \DokanPro\Modules\Subscription\Helper::can_assign_pack_to_user( $pack_id, $user_id );
+            }
+
+            return 'yes' !== get_post_meta( $pack_id, '_exclusive_for_admin_only', true ) || user_can( $user_id, 'administrator' );
         }
 
-        private function find_first_free_pack_id() {
+        private function find_starter_pack_id( $user_id ) {
             $query = new WP_Query(
                 [
                     'post_type'      => 'product',
@@ -185,18 +193,20 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
                 return 0;
             }
 
+            $free_packs = [];
             foreach ( $query->posts as $pack_id ) {
                 $product = wc_get_product( $pack_id );
-                if ( ! $product ) {
+                if ( ! $product || ! $this->is_valid_pack_id( $pack_id, $user_id ) || (float) $product->get_price() > 0 ) {
                     continue;
                 }
 
-                if ( (float) $product->get_price() <= 0 ) {
+                $free_packs[] = absint( $pack_id );
+                if ( 'starter' === sanitize_title( $product->get_name() ) || 'starter' === $product->get_slug() ) {
                     return absint( $pack_id );
                 }
             }
 
-            return 0;
+            return absint( $free_packs[0] ?? 0 );
         }
 
         private function create_pack_order( $user_id, $pack_id ) {

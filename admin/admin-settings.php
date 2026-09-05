@@ -46,6 +46,24 @@ function koopo_register_admin_menu() {
         'koopo_cat_fallback_settings_page'
     );
 
+    add_submenu_page(
+        $parent_slug,
+        __( 'Profile Name Display', 'koopo' ),
+        __( 'Profile Name Display', 'koopo' ),
+        $capability,
+        'koopo-profile-name-display',
+        'koopo_profile_name_display_settings_page'
+    );
+
+    add_submenu_page(
+        $parent_slug,
+        __( 'Social Features', 'koopo' ),
+        __( 'Social Features', 'koopo' ),
+        $capability,
+        'koopo-social-features',
+        'koopo_social_features_settings_page'
+    );
+
     /**
      * Allow other Koopo plugins to register submenu pages under "Koopo".
      *
@@ -77,6 +95,40 @@ function koopo_register_admin_settings() {
         'koopo_vendor_starter_pack_id',
         array(
             'sanitize_callback' => 'absint',
+        )
+    );
+
+    register_setting(
+        'koopo_profile_name_display_group',
+        'koopo_profile_display_name_field_id',
+        array(
+            'sanitize_callback' => 'absint',
+        )
+    );
+
+    register_setting(
+        'koopo_profile_name_display_group',
+        'koopo_company_name_field_id',
+        array(
+            'sanitize_callback' => 'absint',
+        )
+    );
+
+    register_setting(
+        'koopo_profile_name_display_group',
+        'koopo_alias_name_field_id',
+        array(
+            'sanitize_callback' => 'absint',
+        )
+    );
+
+    register_setting(
+        'koopo_social_features_group',
+        Koopo_BuddyBoss_Poll_Permissions::OPTION_ALLOW_ALL_MEMBERS,
+        array(
+            'type'              => 'boolean',
+            'default'           => true,
+            'sanitize_callback' => array( 'Koopo_BuddyBoss_Poll_Permissions', 'sanitize_enabled' ),
         )
     );
 }
@@ -159,5 +211,161 @@ function koopo_cat_fallback_settings_page() {
         });
     });
     </script>
+    <?php
+}
+
+function koopo_profile_name_display_settings_page() {
+    $display_choice_field_id = absint( get_option( 'koopo_profile_display_name_field_id', 0 ) );
+    $company_name_field_id   = absint( get_option( 'koopo_company_name_field_id', 0 ) );
+    $alias_name_field_id     = absint( get_option( 'koopo_alias_name_field_id', 0 ) );
+    $profile_fields          = koopo_get_xprofile_field_options();
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Profile Name Display', 'koopo' ); ?></h1>
+        <p><?php esc_html_e( 'Choose which BuddyBoss profile fields control user display names across profiles, member cards, search, and API responses.', 'koopo' ); ?></p>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'koopo_profile_name_display_group' ); ?>
+            <table class="form-table" role="presentation">
+                <tr valign="top">
+                    <th scope="row">
+                        <label for="koopo_profile_display_name_field_id"><?php esc_html_e( 'Display-name choice field', 'koopo' ); ?></label>
+                    </th>
+                    <td>
+                        <?php koopo_render_xprofile_field_select( 'koopo_profile_display_name_field_id', $display_choice_field_id, $profile_fields ); ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Select the radio/dropdown xProfile field with labels such as First and Last Name, First Name, Username, Company Name, and Nickname.', 'koopo' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr valign="top">
+                    <th scope="row">
+                        <label for="koopo_company_name_field_id"><?php esc_html_e( 'Company name field', 'koopo' ); ?></label>
+                    </th>
+                    <td>
+                        <?php koopo_render_xprofile_field_select( 'koopo_company_name_field_id', $company_name_field_id, $profile_fields ); ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Select the xProfile field that stores the public company or business name.', 'koopo' ); ?>
+                        </p>
+                    </td>
+                </tr>
+                <tr valign="top">
+                    <th scope="row">
+                        <label for="koopo_alias_name_field_id"><?php esc_html_e( 'Alias / nickname field', 'koopo' ); ?></label>
+                    </th>
+                    <td>
+                        <?php koopo_render_xprofile_field_select( 'koopo_alias_name_field_id', $alias_name_field_id, $profile_fields ); ?>
+                        <p class="description">
+                            <?php esc_html_e( 'Select the xProfile field that stores the public alias or nickname. This is used when the display-name choice is Nickname or Alias.', 'koopo' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button(); ?>
+        </form>
+    </div>
+    <?php
+}
+
+function koopo_social_features_settings_page() {
+    $member_polls_enabled = Koopo_BuddyBoss_Poll_Permissions::members_are_enabled();
+    ?>
+    <div class="wrap">
+        <h1><?php esc_html_e( 'Social Features', 'koopo' ); ?></h1>
+        <p><?php esc_html_e( 'Control Koopo-wide social permissions shared by the website, API gateway, and mobile application.', 'koopo' ); ?></p>
+
+        <form method="post" action="options.php">
+            <?php settings_fields( 'koopo_social_features_group' ); ?>
+            <table class="form-table" role="presentation">
+                <tr valign="top">
+                    <th scope="row"><?php esc_html_e( 'Member Poll Creation', 'koopo' ); ?></th>
+                    <td>
+                        <input
+                            type="hidden"
+                            name="<?php echo esc_attr( Koopo_BuddyBoss_Poll_Permissions::OPTION_ALLOW_ALL_MEMBERS ); ?>"
+                            value="0"
+                        />
+                        <label for="<?php echo esc_attr( Koopo_BuddyBoss_Poll_Permissions::OPTION_ALLOW_ALL_MEMBERS ); ?>">
+                            <input
+                                id="<?php echo esc_attr( Koopo_BuddyBoss_Poll_Permissions::OPTION_ALLOW_ALL_MEMBERS ); ?>"
+                                type="checkbox"
+                                name="<?php echo esc_attr( Koopo_BuddyBoss_Poll_Permissions::OPTION_ALLOW_ALL_MEMBERS ); ?>"
+                                value="1"
+                                <?php checked( $member_polls_enabled ); ?>
+                            />
+                            <?php esc_html_e( 'Allow all logged-in members to create polls in activity and profile feeds', 'koopo' ); ?>
+                        </label>
+                        <p class="description">
+                            <?php esc_html_e( 'BuddyBoss Polls must also be enabled. Group poll permissions remain limited to group owners and moderators.', 'koopo' ); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button(); ?>
+        </form>
+    </div>
+    <?php
+}
+
+function koopo_get_xprofile_field_options() {
+    if ( ! function_exists( 'bp_xprofile_get_groups' ) ) {
+        return array();
+    }
+
+    $groups = bp_xprofile_get_groups(
+        array(
+            'fetch_fields' => true,
+        )
+    );
+
+    $fields = array();
+    foreach ( (array) $groups as $group ) {
+        if ( empty( $group->fields ) || ! is_array( $group->fields ) ) {
+            continue;
+        }
+
+        foreach ( $group->fields as $field ) {
+            if ( empty( $field->id ) || empty( $field->name ) ) {
+                continue;
+            }
+
+            $fields[] = array(
+                'id'    => absint( $field->id ),
+                'name'  => (string) $field->name,
+                'group' => ! empty( $group->name ) ? (string) $group->name : '',
+                'type'  => ! empty( $field->type ) ? (string) $field->type : '',
+            );
+        }
+    }
+
+    return $fields;
+}
+
+function koopo_render_xprofile_field_select( $option_name, $selected, $profile_fields ) {
+    if ( empty( $profile_fields ) ) {
+        ?>
+        <input id="<?php echo esc_attr( $option_name ); ?>" type="number" min="0" name="<?php echo esc_attr( $option_name ); ?>" value="<?php echo esc_attr( $selected ); ?>" style="width: 120px;" />
+        <p class="description"><?php esc_html_e( 'BuddyBoss xProfile fields are not available. Enter field IDs after BuddyBoss is active.', 'koopo' ); ?></p>
+        <?php
+        return;
+    }
+    ?>
+    <select id="<?php echo esc_attr( $option_name ); ?>" name="<?php echo esc_attr( $option_name ); ?>" style="min-width: 360px;">
+        <option value="0"><?php esc_html_e( 'Select a profile field', 'koopo' ); ?></option>
+        <?php foreach ( (array) $profile_fields as $field ) : ?>
+            <?php
+            $label = sprintf(
+                '#%1$d - %2$s%3$s%4$s',
+                absint( $field['id'] ),
+                $field['name'],
+                '' !== $field['group'] ? ' (' . $field['group'] . ')' : '',
+                '' !== $field['type'] ? ' - ' . $field['type'] : ''
+            );
+            ?>
+            <option value="<?php echo esc_attr( $field['id'] ); ?>" <?php selected( $selected, $field['id'] ); ?>>
+                <?php echo esc_html( $label ); ?>
+            </option>
+        <?php endforeach; ?>
+    </select>
     <?php
 }

@@ -7,6 +7,7 @@ add_shortcode( 'fav-products', 'get_user_fav_products');
 add_shortcode( 'joinTheSquare', 'koopo_join_the_square_shortcode' );
 
 add_action( 'wp_ajax_koopo_join_the_square', 'koopo_handle_join_the_square_ajax' );
+add_action( 'rest_api_init', 'koopo_register_influencer_rest_routes' );
 
 function koopo_user_has_influencer_access( $user ) {
     if ( ! $user || ! $user->exists() ) {
@@ -47,16 +48,113 @@ function koopo_handle_join_the_square_ajax() {
         wp_send_json_error( array( 'message' => 'invalid_nonce' ), 403 );
     }
 
-    $user = wp_get_current_user();
-    if ( koopo_user_has_influencer_access( $user ) ) {
-        wp_send_json_success();
+    $result = koopo_join_the_square_for_current_user();
+    if ( is_wp_error( $result ) ) {
+        wp_send_json_error(
+            array(
+                'message' => $result->get_error_code(),
+                'detail'  => $result->get_error_message(),
+            ),
+            500
+        );
     }
 
-    if ( get_role( 'influencer' ) ) {
-        $user->add_role( 'influencer' );
+    wp_send_json_success( $result );
+}
+
+function koopo_register_influencer_rest_routes() {
+    register_rest_route(
+        'koopo/v1',
+        '/influencer/access',
+        array(
+            array(
+                'methods'             => \WP_REST_Server::READABLE,
+                'callback'            => 'koopo_get_influencer_access_rest',
+                'permission_callback' => static function() {
+                    return is_user_logged_in();
+                },
+            ),
+            array(
+                'methods'             => \WP_REST_Server::CREATABLE,
+                'callback'            => 'koopo_join_the_square_rest',
+                'permission_callback' => static function() {
+                    return is_user_logged_in();
+                },
+            ),
+        )
+    );
+}
+
+function koopo_get_current_user_influencer_access_payload( $user = null ) {
+    if ( is_numeric( $user ) ) {
+        $user = new \WP_User( (int) $user );
+    }
+    if ( ! $user instanceof \WP_User ) {
+        $user = wp_get_current_user();
+    }
+    if ( ! $user || ! $user->exists() ) {
+        return new \WP_Error( 'not_logged_in', 'Sign in is required.', array( 'status' => 401 ) );
     }
 
-    wp_send_json_success();
+    $has_access = koopo_user_has_influencer_access( $user );
+
+    return array(
+        'user_id'      => (int) $user->ID,
+        'has_access'   => (bool) $has_access,
+        'role_exists'  => (bool) get_role( 'influencer' ),
+        'roles'        => array_values( array_filter( (array) $user->roles ) ),
+        'display_name' => function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $user->ID, $user->display_name ) : $user->display_name,
+    );
+}
+
+function koopo_join_the_square_for_current_user() {
+    $payload = koopo_get_current_user_influencer_access_payload();
+    if ( is_wp_error( $payload ) ) {
+        return $payload;
+    }
+
+    if ( $payload['has_access'] ) {
+        $payload['joined'] = false;
+        return $payload;
+    }
+
+    $role = get_role( 'influencer' );
+    if ( ! $role ) {
+        return new \WP_Error(
+            'influencer_role_missing',
+            'The influencer role is not configured on this site.',
+            array( 'status' => 503 )
+        );
+    }
+
+    $user = new \WP_User( (int) $payload['user_id'] );
+    $user->add_role( 'influencer' );
+
+    $updated_payload = koopo_get_current_user_influencer_access_payload( $user->ID );
+    if ( is_wp_error( $updated_payload ) ) {
+        return $updated_payload;
+    }
+
+    $updated_payload['joined'] = true;
+    return $updated_payload;
+}
+
+function koopo_get_influencer_access_rest( \WP_REST_Request $request ) {
+    unset( $request );
+    $payload = koopo_get_current_user_influencer_access_payload();
+    if ( is_wp_error( $payload ) ) {
+        return $payload;
+    }
+    return rest_ensure_response( $payload );
+}
+
+function koopo_join_the_square_rest( \WP_REST_Request $request ) {
+    unset( $request );
+    $payload = koopo_join_the_square_for_current_user();
+    if ( is_wp_error( $payload ) ) {
+        return $payload;
+    }
+    return rest_ensure_response( $payload );
 }
 
 /**

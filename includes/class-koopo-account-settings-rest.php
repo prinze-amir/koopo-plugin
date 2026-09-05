@@ -93,6 +93,16 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
             register_rest_route(
                 self::REST_NAMESPACE,
+                '/account/selling/activate',
+                [
+                    'methods'             => WP_REST_Server::CREATABLE,
+                    'callback'            => [ $this, 'activate_selling' ],
+                    'permission_callback' => [ $this, 'require_authenticated_user' ],
+                ]
+            );
+
+            register_rest_route(
+                self::REST_NAMESPACE,
                 '/account/stories',
                 [
                     'methods'             => WP_REST_Server::READABLE,
@@ -364,6 +374,66 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
         public function get_subscription_summary() {
             return rest_ensure_response( $this->get_subscription_summary_payload( get_current_user_id() ) );
+        }
+
+        public function activate_selling( WP_REST_Request $request ) {
+            $user_id = get_current_user_id();
+            $user    = get_userdata( $user_id );
+
+            if ( ! $user instanceof WP_User || $user_id <= 0 ) {
+                return new WP_Error( 'koopo_account_invalid_user', __( 'Authenticated user could not be resolved.', 'koopo' ), [ 'status' => 401 ] );
+            }
+
+            if ( $this->is_user_seller( $user_id ) ) {
+                return rest_ensure_response( $this->get_subscription_summary_payload( $user_id ) );
+            }
+
+            $first_name = sanitize_text_field( (string) $request->get_param( 'firstName' ) );
+            $last_name  = sanitize_text_field( (string) $request->get_param( 'lastName' ) );
+            $store_name = sanitize_text_field( (string) $request->get_param( 'storeName' ) );
+            $store_slug = sanitize_title( (string) $request->get_param( 'storeSlug' ) );
+            $phone      = sanitize_text_field( (string) $request->get_param( 'phone' ) );
+
+            if ( '' === $first_name || '' === $store_name || '' === $store_slug || '' === $phone ) {
+                return new WP_Error(
+                    'koopo_account_seller_activation_missing_fields',
+                    __( 'First name, store name, store URL, and phone number are required.', 'koopo' ),
+                    [ 'status' => 400 ]
+                );
+            }
+
+            if ( function_exists( 'dokan_sanitize_phone_number' ) ) {
+                $phone = dokan_sanitize_phone_number( $phone );
+            }
+
+            $payload = [
+                'fname'    => $first_name,
+                'lname'    => $last_name,
+                'shopname' => $store_name,
+                'shopurl'  => $store_slug,
+                'phone'    => $phone,
+                'address'  => [],
+            ];
+
+            if ( function_exists( 'dokan_user_update_to_seller' ) ) {
+                dokan_user_update_to_seller( $user, $payload );
+            } else {
+                $user->add_role( 'seller' );
+                wp_update_user(
+                    [
+                        'ID'            => $user_id,
+                        'user_nicename' => $store_slug,
+                        'first_name'    => $first_name,
+                        'last_name'     => $last_name,
+                    ]
+                );
+                update_user_meta( $user_id, 'dokan_store_name', $store_name );
+                update_user_meta( $user_id, 'dokan_enable_selling', 'yes' );
+            }
+
+            $this->assign_starter_pack_if_needed( $user_id );
+
+            return rest_ensure_response( $this->get_subscription_summary_payload( $user_id ) );
         }
 
         public function get_story_settings() {
@@ -712,9 +782,9 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         private function get_subscription_summary_payload( $user_id ) {
             $current_pack_id      = $this->get_vendor_pack_id( $user_id );
             $starter_pack_id      = $this->get_starter_pack_id( $user_id );
+            $commerce_access      = $this->get_commerce_access_payload( $user_id );
             $current_plan         = $this->build_current_subscription_payload( $user_id, $starter_pack_id );
             $packs                = $this->get_subscription_packs_payload( $user_id, $current_pack_id, $starter_pack_id );
-            $seller_account_active = $this->is_user_seller( $user_id ) || $current_pack_id > 0;
 
             return [
                 'currentPlan'         => $current_plan,
@@ -722,8 +792,9 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                 'upgradeEntryPoints'  => $this->get_upgrade_entry_points_payload(),
                 'recommendedProductId'=> $this->get_recommended_pack_product_id( $packs ),
                 'starterPackProductId'=> $starter_pack_id > 0 ? $starter_pack_id : null,
-                'sellerAccountActive' => $seller_account_active,
+                'sellerAccountActive' => ! empty( $commerce_access['sellerRoleActive'] ),
                 'monetizationUnlocked'=> ! empty( $current_plan['isActive'] ),
+                'commerceAccess'      => $commerce_access,
             ];
         }
 
@@ -845,6 +916,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             $product_limit    = get_post_meta( $pack_id, '_no_of_product', true );
             $product_limit    = is_numeric( $product_limit ) ? (int) $product_limit : null;
             $status_label     = $is_active ? __( 'Active subscription', 'koopo' ) : __( 'Inactive subscription', 'koopo' );
+            $features         = $this->build_subscription_features_payload( $pack_id );
 
             if ( $is_active && '' !== $end_date && 'unlimited' !== strtolower( $end_date ) ) {
                 $status_label = sprintf( __( 'Active until %s', 'koopo' ), $this->format_subscription_date( $end_date ) );
@@ -861,8 +933,8 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                 'endDate'             => '' !== $end_date ? $end_date : null,
                 'isActive'            => $is_active,
                 'isStarter'           => (int) $pack_id === (int) $starter_pack_id,
-                'highlights'          => $this->build_pack_highlights( $pack_id, $this->build_subscription_features_payload( $pack_id ), $period_label, (int) $pack_id === (int) $starter_pack_id, $admin_commission ),
-                'features'            => $this->build_subscription_features_payload( $pack_id ),
+                'highlights'          => $this->build_pack_highlights( $pack_id, $features, $period_label, (int) $pack_id === (int) $starter_pack_id, $admin_commission ),
+                'features'            => $features,
                 'productLimit'        => ( null !== $product_limit && $product_limit >= 0 ) ? $product_limit : null,
                 'adminCommissionRate' => $admin_commission,
             ];
@@ -906,6 +978,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
         }
 
         private function get_pack_feature_map( $pack_id ) {
+            $all_access = $this->is_all_access_pack( $pack_id );
             $features = get_post_meta( $pack_id, '_koopo_features', true );
             if ( is_string( $features ) ) {
                 $decoded = json_decode( $features, true );
@@ -936,11 +1009,23 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                 || ! empty( $ai_features['influencer_square'] );
 
             return [
-                'appointments' => ! empty( $features['appointments'] ),
-                'event_tickets'=> ! empty( $features['event_tickets'] ),
-                'pod'          => 'yes' === (string) get_post_meta( $pack_id, '_koopo_pd_pack_enabled', true ),
-                'ai_tools'     => $has_ai_tools,
+                'appointments' => $all_access || ! empty( $features['appointments'] ),
+                'event_tickets'=> $all_access || ! empty( $features['event_tickets'] ),
+                'pod'          => $all_access || 'yes' === (string) get_post_meta( $pack_id, '_koopo_pd_pack_enabled', true ),
+                'ai_tools'     => $all_access || $has_ai_tools,
             ];
+        }
+
+        private function is_all_access_pack( $pack_id ) {
+            $product = wc_get_product( $pack_id );
+            if ( ! $product ) {
+                return false;
+            }
+
+            $identity = sanitize_title( $product->get_slug() . ' ' . $product->get_name() );
+
+            return false !== strpos( $identity, 'all-access' )
+                || false !== strpos( $identity, 'ultimate-access' );
         }
 
         private function get_upgrade_entry_points_payload() {
@@ -998,6 +1083,125 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
             }
 
             return in_array( 'seller', $user->roles, true );
+        }
+
+        private function is_selling_enabled( $user_id ) {
+            if ( function_exists( 'dokan_is_seller_enabled' ) ) {
+                return (bool) dokan_is_seller_enabled( $user_id );
+            }
+
+            return 'yes' === (string) get_user_meta( $user_id, 'dokan_enable_selling', true );
+        }
+
+        private function is_vendor_stripe_connected( $user_id ) {
+            if ( function_exists( 'koopo_payouts_resolve_readiness' ) ) {
+                $readiness = koopo_payouts_resolve_readiness( $user_id );
+                if ( is_array( $readiness ) && ! empty( $readiness['available'] ) ) {
+                    return ! empty( $readiness['connected'] );
+                }
+            }
+
+            if ( class_exists( '\\WeDevs\\DokanPro\\Modules\\StripeExpress\\Support\\UserMeta' ) ) {
+                $account_id = \WeDevs\DokanPro\Modules\StripeExpress\Support\UserMeta::get_stripe_account_id( $user_id );
+                if ( is_string( $account_id ) && '' !== trim( $account_id ) ) {
+                    return true;
+                }
+            }
+
+            $keys = [
+                '_dokan_stripe_express_account_id',
+                '_dokan_stripe_express_test_account_id',
+                '_dokan_stripe_connected_account_id',
+                '_stripe_connect_access_key',
+                'dokan_connected_vendor_id',
+                'dokan_stripe_account_id',
+            ];
+
+            foreach ( $keys as $key ) {
+                $value = get_user_meta( $user_id, $key, true );
+                if ( is_string( $value ) && '' !== trim( $value ) ) {
+                    return true;
+                }
+            }
+
+            return (bool) apply_filters( 'koopo_account_vendor_stripe_connected', false, $user_id );
+        }
+
+        private function get_commerce_access_payload( $user_id ) {
+            $seller_role_active = $this->is_user_seller( $user_id );
+            $selling_enabled    = $seller_role_active && $this->is_selling_enabled( $user_id );
+            $stripe_connected   = $selling_enabled && $this->is_vendor_stripe_connected( $user_id );
+            $can_accept_payments = $seller_role_active && $selling_enabled && $stripe_connected;
+            $payout_status       = $stripe_connected ? 'ready' : 'not_started';
+
+            if ( function_exists( 'koopo_payouts' ) ) {
+                try {
+                    $payout_summary = koopo_payouts()->service()->summary( $user_id );
+                    if ( is_array( $payout_summary ) ) {
+                        $seller_role_active  = ! empty( $payout_summary['seller_access']['role_active'] );
+                        $selling_enabled     = ! empty( $payout_summary['seller_access']['selling_enabled'] );
+                        $stripe_connected    = ! empty( $payout_summary['readiness']['connected'] );
+                        $can_accept_payments = ! empty( $payout_summary['payment_acceptance']['can_accept_payments'] );
+                        $payout_status       = ! empty( $payout_summary['payout_destination']['status'] )
+                            ? sanitize_key( (string) $payout_summary['payout_destination']['status'] )
+                            : 'unavailable';
+                    }
+                } catch ( \Throwable $error ) {
+                    // Preserve the established account payload if the optional payouts service is unavailable.
+                }
+            }
+
+            return [
+                'sellerRoleActive' => $seller_role_active,
+                'sellingEnabled'   => $selling_enabled,
+                'canOpenVendorTools'=> $seller_role_active && $selling_enabled,
+                'canAcceptPayments'=> $can_accept_payments,
+                'payoutStatus'     => $payout_status,
+                // Deprecated compatibility fields retained until all clients use capability-based readiness.
+                'stripeConnected'  => $stripe_connected,
+                'commerceReady'    => $can_accept_payments,
+                'canActivateSeller'=> ! $seller_role_active,
+                'setupSteps'       => [
+                    [
+                        'key'         => 'seller_role',
+                        'label'       => __( 'Enable selling account', 'koopo' ),
+                        'description' => __( 'Create your store profile and activate the Dokan seller role.', 'koopo' ),
+                        'completed'   => $seller_role_active,
+                        'ctaLabel'    => __( 'Enable selling', 'koopo' ),
+                    ],
+                    [
+                        'key'         => 'selling_enabled',
+                        'label'       => __( 'Selling permission active', 'koopo' ),
+                        'description' => __( 'Your store must be enabled before commerce tools can publish products or bookings.', 'koopo' ),
+                        'completed'   => $selling_enabled,
+                        'ctaLabel'    => __( 'Contact support', 'koopo' ),
+                    ],
+                    [
+                        'key'         => 'payouts_ready',
+                        'legacyKey'   => 'stripe_connected',
+                        'routeKey'    => 'payment-options',
+                        'label'       => __( 'Set up Koopo Payouts', 'koopo' ),
+                        'description' => __( 'Complete the payout requirements needed to accept payments and receive sale proceeds.', 'koopo' ),
+                        'completed'   => $can_accept_payments,
+                        'ctaLabel'    => __( 'Open Koopo Payouts', 'koopo' ),
+                    ],
+                ],
+            ];
+        }
+
+        private function assign_starter_pack_if_needed( $user_id ) {
+            if ( $this->get_vendor_pack_id( $user_id ) > 0 ) {
+                return;
+            }
+
+            $starter_pack_id = $this->get_starter_pack_id( $user_id );
+            if ( $starter_pack_id <= 0 ) {
+                return;
+            }
+
+            update_user_meta( $user_id, 'product_package_id', $starter_pack_id );
+            update_user_meta( $user_id, 'product_pack_startdate', current_time( 'mysql' ) );
+            update_user_meta( $user_id, 'product_pack_enddate', 'unlimited' );
         }
 
         private function is_vendor_pack_active( $user_id ) {
@@ -1716,7 +1920,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
                 return [
                     'id'          => (int) $user->ID,
-                    'displayName' => (string) $user->display_name,
+                    'displayName' => function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $user->ID, $user->display_name ) : (string) $user->display_name,
                     'username'    => (string) $user->user_login,
                     'avatarUrl'   => $avatar_url ? (string) $avatar_url : '',
                     'profileUrl'  => $profile_url ? (string) $profile_url : '',
@@ -1776,7 +1980,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
 
             return [
                 'id'          => $user_id,
-                'displayName' => '' !== $display_name ? $display_name : sprintf( __( 'User #%d', 'koopo' ), $user_id ),
+                'displayName' => function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $user_id, '' !== $display_name ? $display_name : sprintf( __( 'User #%d', 'koopo' ), $user_id ) ) : ( '' !== $display_name ? $display_name : sprintf( __( 'User #%d', 'koopo' ), $user_id ) ),
                 'username'    => $username,
                 'avatarUrl'   => $avatar_url ? (string) $avatar_url : '',
                 'profileUrl'  => $profile_url ? (string) $profile_url : '',

@@ -7,6 +7,7 @@
     --kcs-shadow: 0 20px 50px rgba(17, 17, 17, 0.12);
     display: grid;
     gap: 14px;
+    max-width:325px;
 }
 
 .koopo-creator-support--compact {
@@ -66,7 +67,6 @@
 
 .koopo-creator-support__actions {
     display: grid;
-    gap: 10px;
     justify-items: start;
 }
 

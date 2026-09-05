@@ -1,0 +1,140 @@
+.koopo-sms-auth {
+    --koopo-sms-black: #050505;
+    --koopo-sms-gold: #ffba12;
+    --koopo-sms-soft: #fff8e4;
+    --koopo-sms-border: rgba(5, 5, 5, 0.12);
+    color: var(--koopo-sms-black);
+    margin: 18px 0;
+}
+
+.koopo-sms-auth__panel {
+    border: 1px solid var(--koopo-sms-border);
+    border-radius: 20px;
+    background: linear-gradient(135deg, #fff 0%, var(--koopo-sms-soft) 100%);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+    padding: clamp(18px, 4vw, 34px);
+    max-width: 520px;
+}
+
+.koopo-sms-auth__eyebrow {
+    color: #805800;
+    font-weight: 800;
+    letter-spacing: .12em;
+    margin: 0 0 6px;
+    text-transform: uppercase;
+    font-size: 12px;
+}
+
+.koopo-sms-auth h3 {
+    margin: 0 0 8px;
+    font-size: clamp(24px, 4vw, 34px);
+    line-height: 1.05;
+}
+
+.koopo-sms-auth p {
+    color: #444;
+}
+
+.koopo-sms-auth__form {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.koopo-sms-auth label {
+    display: grid;
+    gap: 6px;
+    font-weight: 700;
+}
+
+.koopo-sms-auth input[type="tel"],
+.koopo-sms-auth input[type="text"] {
+    border: 1px solid var(--koopo-sms-border);
+    border-radius: 14px;
+    font-size: 18px;
+    min-height: 48px;
+    padding: 10px 13px;
+    width: 100%;
+}
+
+.koopo-sms-auth input:focus {
+    border-color: var(--koopo-sms-gold);
+    box-shadow: 0 0 0 3px rgba(255, 186, 18, 0.25);
+    outline: none;
+}
+
+.koopo-sms-auth__check {
+    align-items: center;
+    display: flex !important;
+    gap: 8px;
+    font-weight: 600 !important;
+}
+
+.koopo-sms-auth__button {
+    align-items: center;
+    background: var(--koopo-sms-black);
+    border: 0;
+    border-radius: 999px;
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 800;
+    justify-content: center;
+    min-height: 48px;
+    padding: 12px 20px;
+    transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+
+.koopo-sms-auth__button:hover,
+.koopo-sms-auth__button:focus-visible {
+    background: var(--koopo-sms-gold);
+    color: var(--koopo-sms-black);
+    transform: translateY(-1px);
+}
+
+.koopo-sms-auth__button:active {
+    transform: translateY(0) scale(.98);
+}
+
+.koopo-sms-auth__button:disabled,
+.koopo-sms-auth input:disabled {
+    cursor: wait;
+    opacity: .65;
+}
+
+.koopo-sms-auth__link {
+    background: transparent;
+    border: 0;
+    color: #111;
+    cursor: pointer;
+    font-weight: 800;
+    padding: 8px 0;
+    text-decoration: underline;
+}
+
+.koopo-sms-auth__link--danger {
+    color: #b42318;
+    margin-top: 10px;
+}
+
+.koopo-sms-auth__status {
+    min-height: 22px;
+    font-weight: 700;
+}
+
+.koopo-sms-auth__status.is-error {
+    color: #b42318;
+}
+
+.koopo-sms-auth--notice {
+    background: #fff;
+    border: 1px solid var(--koopo-sms-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+
+@media (max-width: 560px) {
+    .koopo-sms-auth__panel {
+        border-radius: 16px;
+    }
+}

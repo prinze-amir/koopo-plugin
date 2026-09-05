@@ -425,9 +425,10 @@ class Koopo_Favorites_Service {
         }
 
         $formatted            = $this->format_list_for_response( $shared_data['list'], $shared_data['user']->ID, true );
+        $owner_display_name   = function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $shared_data['user']->ID, $shared_data['user']->display_name ) : $shared_data['user']->display_name;
         $formatted['owner']   = array(
             'id'           => (int) $shared_data['user']->ID,
-            'display_name' => $shared_data['user']->display_name,
+            'display_name' => $owner_display_name,
             'avatar_url'   => esc_url_raw(
                 get_avatar_url(
                     $shared_data['user']->ID,
@@ -461,7 +462,7 @@ class Koopo_Favorites_Service {
                 /* translators: 1: list name, 2: owner name */
                 __( '%1$s by %2$s', 'koopo' ),
                 $shared_data['list']['name'],
-                $shared_data['user']->display_name
+                function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $shared_data['user']->ID, $shared_data['user']->display_name ) : $shared_data['user']->display_name
             );
 
         $created_list = $this->create_list( $user_id, $import_name );
@@ -490,7 +491,7 @@ class Koopo_Favorites_Service {
             'list'         => $this->format_list_for_response( $this->get_list_by_id( $user_id, $created_list['id'] ), $user_id, true ),
             'owner'        => array(
                 'id'           => (int) $shared_data['user']->ID,
-                'display_name' => $shared_data['user']->display_name,
+                'display_name' => function_exists( 'koopo_get_user_display_name' ) ? koopo_get_user_display_name( $shared_data['user']->ID, $shared_data['user']->display_name ) : $shared_data['user']->display_name,
                 'avatar_url'   => esc_url_raw(
                     get_avatar_url(
                         $shared_data['user']->ID,
