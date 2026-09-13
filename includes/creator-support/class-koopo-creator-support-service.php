@@ -126,6 +126,7 @@ class Koopo_Creator_Support_Service {
         $creator_id = absint( (int) $creator_id );
         $amount     = $this->normalize_amount( $amount );
         $args       = is_array( $args ) ? $args : array();
+        if ( ! Koopo_Creator_Support_Settings::enabled( $args ) ) { return new WP_Error( 'support_disabled', __( 'Support is disabled for this location.', 'koopo' ), array( 'status' => 403 ) ); }
 
         if ( ! $creator_id || $amount <= 0 ) {
             return new WP_Error( 'invalid_donation', __( 'A valid creator and donation amount are required.', 'koopo' ), array( 'status' => 400 ) );

@@ -4,8 +4,10 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+require_once __DIR__ . '/class-koopo-creator-support-settings.php';
 require_once __DIR__ . '/class-koopo-creator-support-service.php';
 require_once __DIR__ . '/class-koopo-creator-support-rest.php';
+require_once __DIR__ . '/class-koopo-creator-support-checkout.php';
 
 class Koopo_Creator_Support {
     private static $instance = null;
@@ -25,8 +27,10 @@ class Koopo_Creator_Support {
         $this->service = new Koopo_Creator_Support_Service();
         $this->rest    = new Koopo_Creator_Support_REST( $this->service );
 
+        ( new Koopo_Creator_Support_Settings() )->hooks();
         $this->service->hooks();
         $this->rest->hooks();
+        ( new Koopo_Creator_Support_Checkout() )->hooks();
 
         add_action( 'init', array( $this, 'register_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ), 20 );
@@ -68,7 +72,7 @@ class Koopo_Creator_Support {
                 'module'            => 'general',
                 'source'            => '',
                 'surface'           => 'default',
-                'label'             => __( 'Donate', 'koopo' ),
+                'label'             => __( 'Koopo Love', 'koopo' ),
                 'enable_label'      => __( 'Enable Donations', 'koopo' ),
                 'title'             => '',
                 'description'       => '',
@@ -88,6 +92,7 @@ class Koopo_Creator_Support {
 
     public function render_support_block( $args = array() ) {
         $args = $this->normalize_render_args( is_array( $args ) ? $args : array() );
+        if ( ! Koopo_Creator_Support_Settings::enabled( $args ) ) { return ''; }
         if ( empty( $args['creator_id'] ) ) {
             return '';
         }
@@ -118,8 +123,9 @@ class Koopo_Creator_Support {
         $classes       = trim( 'koopo-creator-support koopo-creator-support--' . $args['variant'] . ' ' . $args['class_name'] );
         $show_copy     = 'panel' === $args['variant'] || ! empty( $args['show_copy'] );
         $heading       = '' !== $args['title'] ? $args['title'] : sprintf( __( 'Support %s', 'koopo' ), $creator_name );
-        $description   = '' !== $args['description'] ? $args['description'] : __( 'Send a one-time donation directly through Koopo checkout.', 'koopo' );
-        $modal_heading = sprintf( __( 'Support %s', 'koopo' ), $creator_name );
+        $description   = '' !== $args['description'] ? $args['description'] : __( 'Send one-time support securely without leaving this page.', 'koopo' );
+        $modal_heading = __( 'Show Love', 'koopo' );
+        $creator_bio   = wp_trim_words( wp_strip_all_tags( (string) get_user_meta( $args['creator_id'], 'description', true ) ), 28, '…' );
 
         if ( $can_enable ) {
             $support_note = ! empty( $access_state['setup_message'] ) ? (string) $access_state['setup_message'] : __( 'Create a support product to start accepting donations.', 'koopo' );
@@ -132,6 +138,7 @@ class Koopo_Creator_Support {
         <section
             class="<?php echo esc_attr( $classes ); ?>"
             data-koopo-creator-support
+            data-checkout-context="<?php echo esc_attr( Koopo_Creator_Support_Checkout::context_token( $args ) ); ?>"
             data-creator-id="<?php echo esc_attr( $args['creator_id'] ); ?>"
             data-module="<?php echo esc_attr( $args['module'] ); ?>"
             data-surface="<?php echo esc_attr( $args['surface'] ); ?>"
@@ -175,28 +182,52 @@ class Koopo_Creator_Support {
                     <div class="koopo-creator-support__modal-backdrop" data-kcs-close></div>
                     <div class="koopo-creator-support__modal-panel" role="dialog" aria-modal="true" aria-labelledby="<?php echo esc_attr( $modal_id ); ?>">
                         <button type="button" class="koopo-creator-support__modal-close" data-kcs-close aria-label="<?php esc_attr_e( 'Close', 'koopo' ); ?>">&times;</button>
-                        <p class="koopo-creator-support__eyebrow"><?php esc_html_e( 'Support creator', 'koopo' ); ?></p>
-                        <h3 id="<?php echo esc_attr( $modal_id ); ?>"><?php echo esc_html( $modal_heading ); ?></h3>
-                        <p class="koopo-creator-support__modal-text"><?php esc_html_e( 'Choose any amount, then continue to checkout.', 'koopo' ); ?></p>
+                        <div class="koopo-creator-support__success-mark" data-kcs-success-mark hidden aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M7 16.5l6 6L25 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                        <p class="koopo-creator-support__eyebrow" data-kcs-eyebrow><?php esc_html_e( 'Support creator', 'koopo' ); ?></p>
+                        <h3 data-kcs-heading id="<?php echo esc_attr( $modal_id ); ?>"><?php echo esc_html( $modal_heading ); ?></h3>
+                        <p class="koopo-creator-support__modal-text" data-kcs-intro><?php esc_html_e( 'Support this creator and help them keep creating.', 'koopo' ); ?></p>
+                        <div class="koopo-creator-support__creator">
+                            <?php echo get_avatar( $args['creator_id'], 88, '', $creator_name ); ?>
+                            <div><h4><?php echo esc_html( $creator_name ); ?></h4><?php if ( $creator_bio ) : ?><p><?php echo esc_html( $creator_bio ); ?></p><?php endif; ?></div>
+                        </div>
+                        <div class="koopo-creator-support__love-note"><span aria-hidden="true">♥</span><p><?php echo esc_html( sprintf( __( 'Your support helps %s keep creating and sharing with the community.', 'koopo' ), $creator_name ) ); ?></p></div>
 
-                        <form class="koopo-creator-support__form" data-kcs-form>
+                        <form class="koopo-creator-support__form" data-kcs-form novalidate>
+                            <div data-kcs-details>
+                            <div class="koopo-creator-support__amount-heading"><strong><?php esc_html_e( 'Choose an amount', 'koopo' ); ?></strong><span><?php echo esc_html( sprintf( __( 'All amounts in %s', 'koopo' ), get_woocommerce_currency() ) ); ?></span></div>
                             <div class="koopo-creator-support__preset-grid">
                                 <?php foreach ( $args['preset_amounts'] as $preset_amount ) : ?>
-                                    <button type="button" class="koopo-creator-support__preset" data-kcs-quick="<?php echo esc_attr( $preset_amount ); ?>">
-                                        <?php echo esc_html( '$' . number_format_i18n( $preset_amount, 0 ) ); ?>
+                                    <button type="button" class="koopo-creator-support__preset" aria-pressed="false" data-kcs-quick="<?php echo esc_attr( $preset_amount ); ?>">
+                                        <?php echo esc_html( ( function_exists( 'get_woocommerce_currency_symbol' ) ? html_entity_decode( get_woocommerce_currency_symbol(), ENT_QUOTES, 'UTF-8' ) : '$' ) . number_format_i18n( $preset_amount, 0 ) ); ?>
                                     </button>
                                 <?php endforeach; ?>
+                                <button type="button" class="koopo-creator-support__preset" data-kcs-custom aria-pressed="false"><?php esc_html_e( 'Custom', 'koopo' ); ?></button>
                             </div>
 
-                            <label class="koopo-creator-support__field">
-                                <span><?php esc_html_e( 'Donation amount', 'koopo' ); ?></span>
+                            <label class="koopo-creator-support__field" data-kcs-custom-field hidden>
+                                <span><?php esc_html_e( 'Support amount', 'koopo' ); ?></span>
                                 <input type="number" min="1" step="0.01" inputmode="decimal" placeholder="25.00" data-kcs-amount required />
                             </label>
 
-                            <p class="koopo-creator-support__status" data-kcs-modal-status aria-live="polite"><?php esc_html_e( 'Choose any amount, then continue to checkout.', 'koopo' ); ?></p>
+                            <?php if ( 'live_paid_chat' === $args['surface'] ) : ?>
+                                <label class="koopo-creator-support__field">
+                                    <span><?php esc_html_e( 'Your public chat message (optional)', 'koopo' ); ?></span>
+                                    <textarea data-kcs-message maxlength="500" rows="3" placeholder="<?php esc_attr_e( 'Say something kind…', 'koopo' ); ?>"></textarea>
+                                </label>
+                            <?php endif; ?>
 
+                            </div>
+                            <p data-kcs-summary hidden></p>
+                            <p class="koopo-creator-support__status" data-kcs-modal-status aria-live="polite"><?php esc_html_e( 'Choose an amount to support this creator.', 'koopo' ); ?></p>
+
+                            <div data-kcs-payment hidden></div>
+                            <a data-kcs-receipt hidden><?php esc_html_e( 'View receipt', 'koopo' ); ?></a>
+                            <?php if ( ! is_user_logged_in() ) : ?>
+                                <a href="<?php echo esc_url( wp_login_url( ( is_ssl() ? 'https://' : 'http://' ) . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] ) ); ?>"><?php esc_html_e( 'Sign in to support this creator', 'koopo' ); ?></a>
+                            <?php endif; ?>
                             <div class="koopo-creator-support__modal-actions">
-                                <button type="submit" class="koopo-creator-support__button" data-kcs-submit><?php esc_html_e( 'Continue to Checkout', 'koopo' ); ?></button>
+                                <button type="button" class="koopo-creator-support__button koopo-creator-support__button--ghost" data-kcs-back hidden>Back</button>
+                                <button type="submit" class="koopo-creator-support__button" data-kcs-submit><?php esc_html_e( 'Continue to payment', 'koopo' ); ?></button>
                                 <button type="button" class="koopo-creator-support__button koopo-creator-support__button--ghost" data-kcs-close><?php esc_html_e( 'Cancel', 'koopo' ); ?></button>
                             </div>
                         </form>
@@ -254,6 +285,7 @@ class Koopo_Creator_Support {
             array(
                 'restBase'  => esc_url_raw( rest_url( 'koopo/v1/creator-support' ) ),
                 'nonce'     => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
+                'loggedIn' => is_user_logged_in(),
                 'messages'  => array(
                     'invalidAmount'    => __( 'Please enter a valid donation amount.', 'koopo' ),
                     'preparing'        => __( 'Preparing checkout...', 'koopo' ),
@@ -322,7 +354,7 @@ class Koopo_Creator_Support {
             'context_post_type' => $context_post_type,
             'module'            => '' !== $module ? sanitize_key( $module ) : 'general',
             'surface'           => ! empty( $args['surface'] ) ? sanitize_key( (string) $args['surface'] ) : 'default',
-            'label'             => ! empty( $args['label'] ) ? (string) $args['label'] : __( 'Donate', 'koopo' ),
+            'label'             => ! empty( $args['label'] ) ? (string) $args['label'] : __( 'Koopo Love', 'koopo' ),
             'enable_label'      => ! empty( $args['enable_label'] ) ? (string) $args['enable_label'] : __( 'Enable Donations', 'koopo' ),
             'title'             => ! empty( $args['title'] ) ? (string) $args['title'] : '',
             'description'       => ! empty( $args['description'] ) ? (string) $args['description'] : '',

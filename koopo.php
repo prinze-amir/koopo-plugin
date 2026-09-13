@@ -3,12 +3,21 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.58
+ * Version: 2.70
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
 
 define( 'KOOPO_PATH', plugin_dir_path( __FILE__ ) );
+
+require_once __DIR__ . '/includes/commerce/class-koopo-ajax-cart.php';
+Koopo_Ajax_Cart::boot();
+
+require_once __DIR__ . '/includes/commerce/checkout/class-koopo-checkout.php';
+Koopo_Checkout::boot();
+
+require_once __DIR__ . '/includes/commerce/orders/class-koopo-order-details.php';
+Koopo_Order_Details::boot();
 
 function koopo_install_commerce_native_checkout_mu_plugin() {
     $source = plugin_dir_path( __FILE__ ) . 'includes/commerce/koopo-commerce-native-checkout-mu.php';

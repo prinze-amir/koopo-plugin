@@ -333,30 +333,10 @@ function custom_woocommerce_get_catalog_ordering_args( $args ) {
 
 
 
-add_action( 'before_delete_post', 'delete_product_images', 10, 1 );
-// Automatically shortens WooCommerce product titles on the main shop, category, and tag pages
-
-function delete_product_images( $post_id )
-{
-    $product = wc_get_product( $post_id );
-
-    if ( !$product ) {
-        return;
-    }
-
-    $featured_image_id = $product->get_image_id();
-    $image_galleries_id = $product->get_gallery_image_ids();
-
-    if( !empty( $featured_image_id ) ) {
-        wp_delete_post( $featured_image_id );
-    }
-
-    if( !empty( $image_galleries_id ) ) {
-        foreach( $image_galleries_id as $single_image_id ) {
-            wp_delete_post( $single_image_id );
-        }
-    }
-}
+// Product deletion must not delete Media Library attachments. Featured/gallery
+// references do not establish ownership: products, variations and other content
+// can share the same attachment. Retain media for explicit Media Library cleanup
+// instead of attempting an incomplete reference scan or cascading deletion.
 
 add_filter( 'option_dokan_selling', function ( $value ) {
     if ( ! is_array( $value ) ) {
