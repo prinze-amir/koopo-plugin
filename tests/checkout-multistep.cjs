@@ -14,9 +14,12 @@ $.expr.pseudos.visible=el=>!el.closest('[hidden]')&&!el.closest('.shipping_addre
 w.HTMLElement.prototype.scrollIntoView=function(){};
 w.koopoCheckout={nextPayment:'Continue to Payment',nextReview:'Continue to Review',required:'Complete required fields',shipping:'Choose shipping for every package',payment:'Choose payment',busy:'Updating',failed:'Update failed',deliveryCopy:'Delivery',paymentCopy:'Payment',reviewCopy:'Review',noPayment:'No payment required',noShipping:'No delivery required',backPayment:'Back to Payment',backDelivery:'Back to Delivery',changed:'Order changed',checkMessage:'Check your order message'};
 const q=s=>d.querySelector(s),all=s=>[...d.querySelectorAll(s)],form=q('form.checkout');
+const modal=process.argv.includes('--modal');
+if(modal){const dialog=d.createElement('dialog');d.body.append(dialog);dialog.append(form);}
 const rawPayment=q('#payment').outerHTML,rawTable=q('.woocommerce-checkout-review-order-table').outerHTML;
 w.eval(fs.readFileSync(root+'/includes/commerce/checkout/checkout.js','utf8'));
 d.dispatchEvent(new w.Event('DOMContentLoaded')); await new Promise(r=>setTimeout(r,20));
+assert.equal(d.body.classList.contains('kc-enhanced-page'),!modal);
 assert.equal(form.dataset.step,'delivery');
 assert.equal(all('#place_order').length,1);
 assert.equal(all('[name="woocommerce-process-checkout-nonce"]').length,1);

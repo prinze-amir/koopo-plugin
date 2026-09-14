@@ -183,7 +183,7 @@
         else if (confirm && form.dataset.needsShipping !== '1') confirm.hidden = true;
         q('.kc-main').prepend(q('.kc-header'));
         form.classList.add('kc-enhanced');
-        document.body.classList.add('kc-enhanced-page');
+        if (!form.closest('dialog')) document.body.classList.add('kc-enhanced-page');
         sync(); show('delivery', false);
         $form.on('click', '.kc-next', next);
         $form.on('click', '[data-kc-edit], [data-kc-step]', function () {

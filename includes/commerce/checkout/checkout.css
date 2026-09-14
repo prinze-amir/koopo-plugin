@@ -1,5 +1,5 @@
 /* Scoped to Koopo's assigned classic checkout; the native form works without JS. */
-.koopo-checkout-page { --kc-ink:#101638; --kc-muted:#65708e; --kc-yellow:#ffbf00; --kc-line:#edf0f5; --kc-cream:#fff6e3; }
+.koopo-checkout-page, .kc-checkout { --kc-ink:#101638; --kc-muted:#65708e; --kc-yellow:#ffbf00; --kc-line:#edf0f5; --kc-cream:#fff6e3; }
 .koopo-checkout-page .site-content { background:#fafaf9; }
 .koopo-checkout-page #primary { max-width:1280px; width:100%; margin-inline:auto; }
 .koopo-checkout-page .entry-header,.koopo-checkout-page #secondary { display:none; }
@@ -163,3 +163,9 @@
  .kc-sidebar { top:100px; max-height:calc(100dvh - 116px); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; border-radius:17px; }
  .kc-sidebar .kc-summary { margin-bottom:0; }
 }
+
+/* Match the redesigned page inside the shared shopping dialog. */
+.koopo-live-purchase:has(.kc-checkout) { width:min(1160px,calc(100vw - 32px)); }
+.koopo-live-purchase .kc-checkout { padding:12px 0 24px; }
+.koopo-live-purchase .kc-sidebar { top:12px; }
+.koopo-live-purchase .kc-header h1 { font-size:30px; }

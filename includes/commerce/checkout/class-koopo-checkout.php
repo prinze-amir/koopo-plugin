@@ -3,8 +3,14 @@
 defined( 'ABSPATH' ) || exit;
 
 final class Koopo_Checkout {
-    const VERSION = '2.67';
+    const VERSION = '2.71';
     private static $rendering = false;
+    private static $modal = false;
+
+    public static function modal_assets() {
+        self::$modal = apply_filters( 'koopo_checkout_enabled', 'no' !== get_option( 'koopo_checkout_enabled', 'yes' ) );
+        self::assets();
+    }
 
     public static function boot() {
         add_filter( 'woocommerce_locate_template', array( __CLASS__, 'template' ), 50, 3 );
@@ -35,7 +41,7 @@ final class Koopo_Checkout {
     }
 
     public static function template( $template, $name, $path ) {
-        if ( 'checkout/form-checkout.php' === $name && self::page() && ! wp_doing_ajax() ) {
+        if ( 'checkout/form-checkout.php' === $name && ( self::$modal || ( self::page() && ! wp_doing_ajax() ) ) ) {
             self::$rendering = true;
             return KOOPO_PATH . 'templates/woocommerce/checkout/form-checkout.php';
         }
@@ -46,7 +52,7 @@ final class Koopo_Checkout {
     }
 
     public static function assets() {
-        if ( ! self::page() ) {
+        if ( ! self::$modal && ! self::page() ) {
             return;
         }
         $url = plugins_url( '', __FILE__ );
