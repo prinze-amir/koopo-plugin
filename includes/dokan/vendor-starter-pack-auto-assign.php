@@ -248,9 +248,9 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
         private function activate_pack_for_vendor( $user_id, $pack_id, $order ) {
             $activated = false;
 
-            if ( class_exists( '\WeDevs\DokanPro\Modules\Subscription\SubscriptionPack' ) ) {
+            if ( class_exists( '\DokanPro\Modules\Subscription\SubscriptionPack' ) ) {
                 try {
-                    $subscription = new \WeDevs\DokanPro\Modules\Subscription\SubscriptionPack( $pack_id, $user_id );
+                    $subscription = new \DokanPro\Modules\Subscription\SubscriptionPack( $pack_id, $user_id );
                     $subscription->activate_subscription( $order );
                     $activated = absint( get_user_meta( $user_id, 'product_package_id', true ) ) === $pack_id;
                 } catch ( Throwable $e ) {
@@ -262,7 +262,8 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
                 return;
             }
 
-            $pack_validity             = absint( get_post_meta( $pack_id, '_pack_validity', true ) );
+            // Dokan uses -1 for unlimited validity; absint() would turn it into one day.
+            $pack_validity             = (int) get_post_meta( $pack_id, '_pack_validity', true );
             $admin_commission          = get_post_meta( $pack_id, '_subscription_product_admin_commission', true );
             $admin_additional_fee      = get_post_meta( $pack_id, '_subscription_product_admin_additional_fee', true );
             $admin_commission_type     = get_post_meta( $pack_id, '_subscription_product_admin_commission_type', true );
@@ -277,7 +278,7 @@ if ( ! class_exists( 'Koopo_Dokan_Vendor_Starter_Pack_Assigner' ) ) {
                 update_user_meta(
                     $user_id,
                     'product_pack_enddate',
-                    wp_date( 'Y-m-d H:i:s', current_time( 'timestamp' ) + ( $pack_validity * DAY_IN_SECONDS ) )
+                    current_datetime()->modify( '+' . $pack_validity . ' days' )->format( 'Y-m-d H:i:s' )
                 );
             } else {
                 update_user_meta( $user_id, 'product_pack_enddate', 'unlimited' );

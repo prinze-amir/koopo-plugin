@@ -4,6 +4,7 @@ defined( 'ABSPATH' ) || exit;
 if ( ! $order instanceof WC_Order || ! current_user_can( 'view_order', $order->get_id() ) ) { wc_print_notice( __( 'Invalid order.', 'woocommerce' ), 'error' ); return; }
 $type = Koopo_Order_Details::type( $order );
 $notes = $order->get_customer_order_notes();
+$payment_label = 'booking' === $type && Koopo_Order_Details::payment_is_verified( $order ) ? __( 'Payment verified', 'koopo' ) : __( 'Payment received', 'koopo' );
 ?>
 <div class="kod kod--<?php echo esc_attr( $type ); ?>">
     <nav class="kod-breadcrumb" aria-label="<?php esc_attr_e( 'Order navigation', 'koopo' ); ?>"><a href="<?php echo esc_url( wc_get_account_endpoint_url( 'orders' ) ); ?>">← <?php esc_html_e( 'Orders', 'koopo' ); ?></a><span>/</span><span><?php echo esc_html( '#' . $order->get_order_number() ); ?></span></nav>
@@ -11,7 +12,7 @@ $notes = $order->get_customer_order_notes();
     <div class="kod-layout"><div class="kod-main">
         <section class="kod-panel kod-overview" aria-label="<?php esc_attr_e( 'Order progress', 'koopo' ); ?>">
             <ol class="kod-progress">
-            <?php foreach ( array( array( __( 'Order placed', 'koopo' ), $order->get_date_created() ), array( __( 'Payment received', 'koopo' ), $order->get_date_paid() ), array( __( 'Order completed', 'koopo' ), $order->get_date_completed() ) ) as $milestone ) : ?>
+            <?php foreach ( array( array( __( 'Order placed', 'koopo' ), $order->get_date_created() ), array( $payment_label, $order->get_date_paid() ), array( __( 'Order completed', 'koopo' ), $order->get_date_completed() ) ) as $milestone ) : ?>
                 <li class="<?php echo $milestone[1] ? 'is-recorded' : ''; ?>"><span class="kod-dot" aria-hidden="true"><?php echo $milestone[1] ? '✓' : '–'; ?></span><strong><?php echo esc_html( $milestone[0] ); ?></strong><span><?php echo $milestone[1] ? esc_html( wc_format_datetime( $milestone[1] ) ) : esc_html__( 'Not recorded', 'koopo' ); ?></span></li>
             <?php endforeach; ?>
             </ol>

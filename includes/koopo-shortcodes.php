@@ -118,6 +118,14 @@ function koopo_join_the_square_for_current_user() {
         return $payload;
     }
 
+    if ( class_exists( 'Koopo_Creator_Onboarding' ) && '1' !== get_user_meta( (int) $payload['user_id'], Koopo_Creator_Onboarding::COMPLETE_META, true ) ) {
+        return new \WP_Error(
+            'creator_onboarding_required',
+            'Complete creator onboarding before joining the Square.',
+            array( 'status' => 409, 'signup_url' => Koopo_Creator_Onboarding::signup_url() )
+        );
+    }
+
     $role = get_role( 'influencer' );
     if ( ! $role ) {
         return new \WP_Error(
@@ -292,6 +300,10 @@ function get_user_fav_products(){
 }
 
 function koopo_join_the_square_shortcode( $atts ) {
+    if ( class_exists( 'Koopo_Creator_Onboarding' ) ) {
+        return Koopo_Creator_Onboarding::render_shortcode();
+    }
+
     if ( ! is_user_logged_in() ) {
         return '';
     }

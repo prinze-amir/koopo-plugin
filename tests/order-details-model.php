@@ -10,3 +10,7 @@ foreach ( array( 'support' => '_koopo_creator_support', 'ticket' => '_koopo_tick
 kod_assert( 'original' === Koopo_Order_Details::template( 'original', 'order/order-details.php', '' ), 'thank-you/email order template is untouched outside account view' );
 $item = new WC_Order_Item_Product(); $order = new WC_Order();
 kod_assert( 0 === Koopo_Order_Details::seller( $item, $order ), 'deleted product does not inherit current page author' );
+$booking_item = new WC_Order_Item_Product();
+$booking_item->add_meta_data( 'bookingId', 8815 );
+$booking_item->add_meta_data( 'serviceName', 'Hot Towel Shave' );
+kod_assert( 'booking' === Koopo_Order_Details::kind( $booking_item ), 'appointment aliases identify bookable line items' );

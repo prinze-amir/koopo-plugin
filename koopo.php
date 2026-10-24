@@ -3,12 +3,20 @@
  * Plugin Name: Koopo
  * Plugin URI: http://www.docs.koopoonline.com/
  * Description: Custom blocks and shortcodes for advance features.
- * Version: 2.71
+ * Version: 2.80.2
  * Author: Plu2oprinze
  * Author URI: http://www.koopoonline.com
  */
 
 define( 'KOOPO_PATH', plugin_dir_path( __FILE__ ) );
+
+require_once __DIR__ . '/includes/dokan-pack-visibility.php';
+
+require_once __DIR__ . '/includes/location/bootstrap.php';
+
+// Custom Elementor login shares Koopo's existing account/authentication policies.
+require_once __DIR__ . '/includes/login/class-koopo-login.php';
+Koopo_Login::boot();
 
 require_once __DIR__ . '/includes/commerce/class-koopo-ajax-cart.php';
 Koopo_Ajax_Cart::boot();
@@ -82,6 +90,10 @@ if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/elementor/elementor-in
 }
 if ( file_exists( plugin_dir_path(__FILE__) . 'includes/koopo-shortcodes.php' ) ) {
     require_once plugin_dir_path(__FILE__) . 'includes/koopo-shortcodes.php';
+}
+if ( file_exists( plugin_dir_path( __FILE__ ) . 'includes/creator-onboarding/class-koopo-creator-onboarding.php' ) ) {
+    require_once plugin_dir_path( __FILE__ ) . 'includes/creator-onboarding/class-koopo-creator-onboarding.php';
+    Koopo_Creator_Onboarding::boot();
 }
 if ( file_exists( plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php' ) ) {
     require_once plugin_dir_path(__FILE__) . 'includes/dokan-pack-free-checkout.php';

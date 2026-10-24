@@ -37,6 +37,13 @@
 .kod-feature img { width:88px; height:88px; flex:0 0 88px; object-fit:cover; border-radius:12px; }
 .kod-group--support .kod-feature img { border-radius:50%; }
 .kod-feature .kod-event-image { width:124px; height:124px; flex-basis:124px; }
+.kod-booking-heading { border-bottom:1px solid var(--kod-line); padding:2px 0 18px; margin-bottom:18px; }
+.kod-booking-heading h3 { margin:4px 0 0; font-size:24px; }
+.kod-booking-heading p { margin:6px 0 0; color:#4d4d4d; }
+.kod-group--booking .kod-booking-facts { margin-top:0; }
+.kod-alert { margin:18px 0; padding:14px 16px; border-radius:10px; }
+.kod-alert p { margin:5px 0 0; }
+.kod-alert--error { border:1px solid #d63638; background:#fff4f4; color:#6d1f20; }
 .kod-eyebrow { font-size:12px; }
 .kod-group-heading { display:flex; align-items:center; justify-content:space-between; gap:14px; border-bottom:1px solid var(--kod-line); margin-bottom:20px; padding-bottom:16px; }
 .kod-group-heading h2 { margin:0; }

@@ -8,6 +8,9 @@ require_once __DIR__ . '/class-koopo-creator-support-settings.php';
 require_once __DIR__ . '/class-koopo-creator-support-service.php';
 require_once __DIR__ . '/class-koopo-creator-support-rest.php';
 require_once __DIR__ . '/class-koopo-creator-support-checkout.php';
+require_once __DIR__ . '/class-koopo-support-browser-checkout.php';
+require_once __DIR__ . '/class-koopo-support-notifications.php';
+require_once __DIR__ . '/class-koopo-support-push.php';
 
 class Koopo_Creator_Support {
     private static $instance = null;
@@ -31,6 +34,9 @@ class Koopo_Creator_Support {
         $this->service->hooks();
         $this->rest->hooks();
         ( new Koopo_Creator_Support_Checkout() )->hooks();
+        ( new Koopo_Support_Browser_Checkout() )->hooks();
+        ( new Koopo_Support_Notifications() )->hooks();
+        ( new Koopo_Support_Push() )->hooks();
 
         add_action( 'init', array( $this, 'register_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ), 20 );
@@ -209,12 +215,10 @@ class Koopo_Creator_Support {
                                 <input type="number" min="1" step="0.01" inputmode="decimal" placeholder="25.00" data-kcs-amount required />
                             </label>
 
-                            <?php if ( 'live_paid_chat' === $args['surface'] ) : ?>
                                 <label class="koopo-creator-support__field">
-                                    <span><?php esc_html_e( 'Your public chat message (optional)', 'koopo' ); ?></span>
+                                    <span><?php echo esc_html( 'live_paid_chat' === $args['surface'] ? __( 'Your public chat message (optional)', 'koopo' ) : __( 'A note for the creator (optional, private)', 'koopo' ) ); ?></span>
                                     <textarea data-kcs-message maxlength="500" rows="3" placeholder="<?php esc_attr_e( 'Say something kind…', 'koopo' ); ?>"></textarea>
                                 </label>
-                            <?php endif; ?>
 
                             </div>
                             <p data-kcs-summary hidden></p>

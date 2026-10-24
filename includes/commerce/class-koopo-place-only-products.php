@@ -145,6 +145,11 @@ final class Koopo_Place_Only_Products {
 		return absint( get_post_meta( $product_id, self::META_LISTING_ID, true ) );
 	}
 
+	public static function apply_product_placement( $product, $enabled ) {
+		if ( ! current_user_can( 'edit_post', $product->get_id() ) ) return false;
+		return self::apply_setting( $product, $enabled );
+	}
+
 	private static function apply_setting( $product, $enabled ) {
 		$was_enabled = 'yes' === $product->get_meta( self::META_ENABLED, true );
 		$visibility  = $product->get_catalog_visibility();

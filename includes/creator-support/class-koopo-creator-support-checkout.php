@@ -67,6 +67,9 @@ class Koopo_Creator_Support_Checkout {
         $state = $service->creator_support_access_state( $creator_id );
         if ( empty( $state['can_accept'] ) ) { return $this->error( 'This creator cannot accept support right now.' ); }
         $live = ( $context['surface'] ?? '' ) === 'live_paid_chat';
+        $message = $request->get_param( 'message' ) ?? '';
+        if ( ! is_string( $message ) || mb_strlen( $message ) > 500 ) { return $this->error( 'Keep your note within 500 characters.' ); }
+        $message = sanitize_textarea_field( $message );
         $intent = null;
         if ( $live ) {
             $intent = apply_filters( 'koopo_support_live_context', null, $context, $request->get_param( 'message' ), $user_id );
@@ -84,7 +87,7 @@ class Koopo_Creator_Support_Checkout {
         $request_key = (string) $request['request_key'];
         if ( ! preg_match( '/^[a-zA-Z0-9_-]{16,80}$/', $request_key ) ) { return $this->error( 'Invalid checkout request.' ); }
         $key = 'kcs_session_' . hash( 'sha256', $user_id . ':' . $request_key );
-        $fingerprint = hash( 'sha256', wp_json_encode( array( $context, wc_format_decimal( $amount, wc_get_price_decimals() ), $intent['body'] ?? '' ) ) );
+        $fingerprint = hash( 'sha256', wp_json_encode( array( $context, wc_format_decimal( $amount, wc_get_price_decimals() ), $intent['body'] ?? $message ) ) );
         $saved = get_option( $key );
         if ( $saved && ! hash_equals( (string) $saved['fingerprint'], $fingerprint ) ) { return $this->error( 'This checkout already has a different amount or message. Start a new support payment.', 409 ); }
         if ( ! $saved ) {
@@ -121,6 +124,8 @@ class Koopo_Creator_Support_Checkout {
                 $order->update_meta_data( '_dokan_vendor_id', $creator_id );
                 $order->update_meta_data( '_koopo_support_session', $fingerprint );
                 $order->update_meta_data( '_koopo_support_environment', $this->environment() );
+                $order->update_meta_data( '_koopo_support_note', $message );
+                $order->update_meta_data( '_koopo_support_request_key', $request_key );
                 $item = new WC_Order_Item_Product();
                 $item->set_product( $product ); $item->set_quantity( 1 );
                 $item->set_subtotal( wc_format_decimal( $amount, wc_get_price_decimals() ) ); $item->set_total( $item->get_subtotal() );
@@ -165,6 +170,23 @@ class Koopo_Creator_Support_Checkout {
         $this->reconcile( $o->get_id() );
         return $this->payload( wc_get_order( $o->get_id() ) );
     }
+    /** Close only an unpaid, owned checkout; never refund or cancel a processing payment. */
+    public function cancel( WP_REST_Request $r ) {
+        $o = $this->owned( $r['id'] );
+        if ( ! $o ) { return $this->error( 'Support checkout not found.', 404 ); }
+        if ( $o->is_paid() || $o->has_status( array( 'cancelled', 'refunded' ) ) ) { return $this->payload( $o ); }
+        try {
+            $pi = $this->client()->paymentIntents->retrieve( OrderMeta::get_payment_intent( $o ), array() );
+            if ( ! $this->matches( $o, $pi ) ) { return $this->error( 'Payment does not match this support order.', 409 ); }
+            if ( 'succeeded' === $pi->status ) { $this->reconcile( $o->get_id() ); return $this->payload( wc_get_order( $o->get_id() ) ); }
+            if ( in_array( $pi->status, array( 'processing', 'requires_capture' ), true ) ) { return $this->error( 'Payment is being processed. Please wait for confirmation.', 409 ); }
+            if ( 'canceled' !== $pi->status ) { $pi = $this->client()->paymentIntents->cancel( $pi->id, array() ); }
+            if ( 'canceled' !== $pi->status ) { return $this->error( 'Payment could not be cancelled.', 409 ); }
+            $o->update_status( 'cancelled', 'Unpaid support checkout cancelled by customer.' );
+            wp_clear_scheduled_hook( 'koopo_support_reconcile', array( $o->get_id() ) );
+            return $this->payload( $o );
+        } catch ( Throwable $error ) { return $this->error( 'Unable to cancel checkout. Please retry.', 502 ); }
+    }
     private function matches( $o, $pi ) {
         return ( $pi->object ?? '' ) === 'payment_intent' && (int) ( $pi->amount ?? -1 ) === (int) Helper::get_stripe_amount( $o->get_total(), strtolower( $o->get_currency() ) ) && strtoupper( $pi->currency ?? '' ) === $o->get_currency() && (bool) $pi->livemode === ( $o->get_meta( '_koopo_support_environment' ) === 'live' ) && (string) $pi->id === (string) OrderMeta::get_payment_intent( $o );
     }
@@ -205,6 +227,6 @@ class Koopo_Creator_Support_Checkout {
         return true;
     }
     private function payload( $o ) {
-        return array( 'order_id' => $o->get_id(), 'status' => $o->get_status(), 'paid' => $o->is_paid() && $o->get_meta( '_koopo_support_verified' ) === 'yes', 'chat_state' => (string) $o->get_meta( '_koopo_support_chat_state' ), 'amount' => $o->get_total(), 'currency' => $o->get_currency(), 'receipt_url' => $o->get_view_order_url(), 'billing' => array( 'name' => trim( $o->get_billing_first_name() . ' ' . $o->get_billing_last_name() ), 'email' => $o->get_billing_email() ) );
+        return array( 'order_id' => $o->get_id(), 'request_key' => (string) $o->get_meta( '_koopo_support_request_key' ), 'creator_id' => (int) $o->get_meta( '_dokan_vendor_id' ), 'message' => (string) $o->get_meta( '_koopo_support_note' ), 'status' => $o->get_status(), 'paid' => $o->is_paid() && $o->get_meta( '_koopo_support_verified' ) === 'yes', 'chat_state' => (string) $o->get_meta( '_koopo_support_chat_state' ), 'amount' => $o->get_total(), 'currency' => $o->get_currency(), 'receipt_url' => $o->get_view_order_url(), 'billing' => array( 'name' => trim( $o->get_billing_first_name() . ' ' . $o->get_billing_last_name() ), 'email' => $o->get_billing_email() ) );
     }
 }

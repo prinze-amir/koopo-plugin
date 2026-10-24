@@ -2,9 +2,11 @@
 /** Customer order presentation. Commerce and fulfillment remain owned by their plugins. */
 defined( 'ABSPATH' ) || exit;
 final class Koopo_Order_Details {
-    const VERSION = '2.70';
+    const VERSION = '2.73';
     public static $active_order;
     public static function boot() {
+        require_once __DIR__ . "/class-koopo-order-details-rest.php";
+        Koopo_Order_Details_REST::boot();
         add_filter( 'woocommerce_locate_template', array( __CLASS__, 'template' ), 60, 3 );
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'assets' ), 100 );
         add_filter( 'body_class', static function ( $classes ) {
@@ -26,7 +28,7 @@ final class Koopo_Order_Details {
     public static function kind( $item ) {
         if ( $item->get_meta( '_koopo_creator_support' ) ) return 'support';
         if ( $item->get_meta( '_koopo_ticket_type_id' ) ) return 'ticket';
-        if ( $item->get_meta( '_koopo_booking_id' ) ) return 'booking';
+        if ( self::booking_id( $item ) ) return 'booking';
         $product = $item->get_product();
         if ( $product && $product->is_type( 'product_pack' ) ) return 'site_plan';
         if ( self::membership_tier( $item ) ) return 'membership';
@@ -38,7 +40,7 @@ final class Koopo_Order_Details {
         return count( $types ) === 1 ? reset( $types ) : 'mixed';
     }
     public static function title( $type ) {
-        return array( 'membership' => __( 'Membership Details', 'koopo' ), 'site_plan' => __( 'Site Plan Details', 'koopo' ), 'subscription' => __( 'Subscription Details', 'koopo' ), 'support' => __( 'Support Details', 'koopo' ), 'ticket' => __( 'Ticket Order Details', 'koopo' ), 'booking' => __( 'Booking Details', 'koopo' ) )[ $type ] ?? __( 'Order Details', 'koopo' );
+        return array( 'membership' => __( 'Membership Details', 'koopo' ), 'site_plan' => __( 'Site Plan Details', 'koopo' ), 'subscription' => __( 'Subscription Details', 'koopo' ), 'support' => __( 'Koopo Love Details', 'koopo' ), 'ticket' => __( 'Ticket Order Details', 'koopo' ), 'booking' => __( 'Booking Details', 'koopo' ) )[ $type ] ?? __( 'Order Details', 'koopo' );
     }
     public static function seller( $item, $order ) {
         if ( 'site_plan' === self::kind( $item ) ) return 0;
@@ -55,6 +57,28 @@ final class Koopo_Order_Details {
     public static function action( $url, $label, $primary = false ) {
         if ( ! $url ) return;
         echo '<a class="kod-button' . ( $primary ? ' kod-primary' : '' ) . '" href="' . esc_url( $url ) . '">' . esc_html( $label ) . '<span aria-hidden="true"> →</span></a>';
+    }
+    public static function booking_id( $item ) {
+        foreach ( array( '_koopo_booking_id', 'bookingId', 'booking_id', 'appointmentId', 'appointment_id' ) as $key ) {
+            $value = absint( $item->get_meta( $key ) );
+            if ( $value ) return $value;
+        }
+        return 0;
+    }
+    public static function booking_meta_keys( $hidden ) {
+        return array_merge( (array) $hidden, array( 'appointmentId', 'bookingId', 'serviceId', 'serviceName', 'serviceTitle', 'servicePrice', 'serviceCurrency', 'serviceDurationMins', 'placedAt', 'providerId', 'providerName', 'resourceId', 'placeId', 'placeName', 'wcProductId', 'serviceTaxStatus', 'serviceVirtual', 'scheduledAt', 'startAt', '_koopo_booking_id' ) );
+    }
+    public static function booking_formatted_meta( $formatted, $item ) {
+        if ( 'booking' !== self::kind( $item ) ) return $formatted;
+        $hidden = self::booking_meta_keys( array() );
+        return array_filter( $formatted, static function ( $meta ) use ( $hidden ) { return ! in_array( (string) $meta->key, $hidden, true ); } );
+    }
+    public static function payment_is_verified( $order ) {
+        if ( ! $order instanceof WC_Order || ! $order->is_paid() || ! $order->get_date_paid() ) return false;
+        if ( 'dokan_stripe_express' !== $order->get_payment_method() ) return true;
+        return str_starts_with( (string) $order->get_meta( '_dokan_stripe_express_payment_intent_id' ), 'pi_' )
+            && 'yes' === (string) $order->get_meta( '_dokan_stripe_express_charge_captured' )
+            && str_starts_with( (string) $order->get_transaction_id(), 'ch_' );
     }
     /** Resolve only an unambiguous, owner-matched tier; ordinary channel merchandise is not a membership. */
     public static function membership_tier( $item ) {
@@ -136,11 +160,6 @@ final class Koopo_Order_Details {
                 self::action( $url, __( 'View creator', 'koopo' ) );
                 echo '</div></div>';
             }
-            $context = absint( $item->get_meta( '_koopo_creator_support_context_id' ) );
-            $context_type = (string) $item->get_meta( '_koopo_creator_support_context_type' );
-            if ( $context && $context_type && get_post_type( $context ) === $context_type && is_post_publicly_viewable( $context ) ) {
-                echo '<div class="kod-context">'; self::action( get_permalink( $context ), get_the_title( $context ) ); echo '</div>';
-            }
             echo '<dl class="kod-facts">';
             self::fact( __( 'Payment verification', 'koopo' ), 'yes' === $order->get_meta( '_koopo_support_verified' ) ? __( 'Verified', 'koopo' ) : __( 'Not yet verified', 'koopo' ) );
             if ( 'live_paid_chat' === $item->get_meta( '_koopo_creator_support_surface' ) ) {
@@ -165,7 +184,7 @@ final class Koopo_Order_Details {
             self::fact( __( 'Issuance', 'koopo' ), $item->get_meta( '_koopo_tickets_issued' ) ? __( 'Issued — open your tickets for current validity', 'koopo' ) : __( 'Not yet issued', 'koopo' ) );
             echo '</dl>';
         } elseif ( 'booking' === $kind ) {
-            $id = absint( $item->get_meta( '_koopo_booking_id' ) );
+            $id = self::booking_id( $item );
             $booking = class_exists( '\Koopo_Appointments\Bookings' ) ? \Koopo_Appointments\Bookings::get_booking( $id ) : null;
             // Do not expose another customer's booking through stale or malformed item metadata.
             if ( $booking && (int) $booking->wc_order_id !== (int) $order->get_id() ) {
@@ -173,12 +192,22 @@ final class Koopo_Order_Details {
                 $legacy_owned = ! (int) $booking->wc_order_id && $order->get_user_id() && (int) $booking->customer_id === (int) $order->get_user_id();
                 if ( ! $legacy_owned && ( ! $booking_order || (int) $booking_order->get_parent_id() !== (int) $order->get_id() ) ) $booking = null;
             }
-            $subject = $booking ? ( (int) $booking->listing_id ?: (int) ( $booking->provider_id ?? 0 ) ) : 0;
+            $service_id = $booking ? (int) $booking->service_id : absint( $item->get_meta( 'serviceId' ) );
+            $provider_id = $booking ? (int) ( $booking->provider_id ?? 0 ) : absint( $item->get_meta( 'providerId' ) );
+            $subject = $booking ? ( (int) $booking->listing_id ?: $provider_id ) : $provider_id;
             if ( $subject && is_post_publicly_viewable( $subject ) ) {
                 echo '<div class="kod-feature">' . get_the_post_thumbnail( $subject, 'medium' ) . '<div><span class="kod-eyebrow">' . esc_html__( 'Service provider', 'koopo' ) . '</span><h3>' . esc_html( get_the_title( $subject ) ) . '</h3>';
                 self::action( get_permalink( $subject ), __( 'View provider', 'koopo' ) ); echo '</div></div>';
             }
-            echo '<h3>' . esc_html( $item->get_name() ) . '</h3><dl class="kod-facts">';
+            $service_name = $service_id ? get_the_title( $service_id ) : '';
+            $service_name = $service_name ?: (string) ( $item->get_meta( 'serviceTitle' ) ?: $item->get_meta( 'serviceName' ) ?: $item->get_name() );
+            $start = $booking ? (string) $booking->start_datetime : (string) ( $item->get_meta( 'scheduledAt' ) ?: $item->get_meta( 'startAt' ) );
+            $end = $booking ? (string) $booking->end_datetime : '';
+            $timezone = $booking ? (string) $booking->timezone : (string) $item->get_meta( 'timezone' );
+            $provider_name = $booking ? '' : (string) $item->get_meta( 'providerName' );
+            echo '<div class="kod-booking-heading"><span class="kod-eyebrow">' . esc_html__( 'Appointment', 'koopo' ) . '</span><h3>' . esc_html( $service_name ) . '</h3>';
+            if ( $provider_name ) echo '<p>' . esc_html( sprintf( __( 'With %s', 'koopo' ), $provider_name ) ) . '</p>';
+            echo '</div><dl class="kod-facts kod-booking-facts">';
             self::fact( __( 'Booking', 'koopo' ), '#' . $id );
             if ( $booking ) {
                 self::fact( __( 'Appointment status', 'koopo' ), esc_html( ucwords( str_replace( '_', ' ', $booking->status ) ) ) );
@@ -191,10 +220,16 @@ final class Koopo_Order_Details {
                 self::fact( __( 'Appointment type', 'koopo' ), esc_html( array( 'virtual' => __( 'Online appointment', 'koopo' ), 'mobile' => __( 'Provider comes to you', 'koopo' ), 'at_location' => __( 'At a location', 'koopo' ) )[ $mode ] ?? '' ) );
                 if ( 'mobile' === $mode ) self::fact( __( 'Service address', 'koopo' ), esc_html( implode( ', ', array_filter( array( $booking->service_address_1 ?? '', $booking->service_address_2 ?? '', $booking->service_city ?? '', $booking->service_region ?? '', $booking->service_postal_code ?? '' ) ) ) ) );
             } else {
-                self::fact( __( 'Booked start', 'koopo' ), esc_html( $item->get_meta( '_koopo_start_datetime' ) ) );
-                self::fact( __( 'Timezone', 'koopo' ), esc_html( $item->get_meta( '_koopo_timezone' ) ) );
+                $duration = absint( $item->get_meta( 'serviceDurationMins' ) );
+                $formatted = $start ? date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $start ) ) : '';
+                self::fact( __( 'Service time', 'koopo' ), esc_html( $formatted ) );
+                self::fact( __( 'Duration', 'koopo' ), $duration ? esc_html( sprintf( _n( '%d minute', '%d minutes', $duration, 'koopo' ), $duration ) ) : '' );
+                self::fact( __( 'Timezone', 'koopo' ), esc_html( $timezone ) );
             }
             echo '</dl>';
+            if ( $booking && 'expired' === (string) $booking->status && self::payment_is_verified( $order ) ) {
+                echo '<div class="kod-alert kod-alert--error"><strong>' . esc_html__( 'Payment received, but appointment confirmation failed.', 'koopo' ) . '</strong><p>' . esc_html__( 'Do not book or pay again. This order needs support review so the paid appointment can be restored.', 'koopo' ) . '</p></div>';
+            }
             if ( $booking && class_exists( '\Koopo_Appointments\MyAccount' ) ) self::action( \Koopo_Appointments\MyAccount::manage_appointment_url( $id ), __( 'Manage booking', 'koopo' ), true );
         }
     }

@@ -1,0 +1,10 @@
+.koopo-address-autocomplete{position:relative;z-index:20;margin:.35rem 0 0;font-size:.9rem}
+.koopo-address-autocomplete__hint{color:#65708e;font-size:.82em;line-height:1.4}
+.koopo-address-autocomplete__status{min-height:0;color:#65708e;font-size:.84em;line-height:1.4}
+.koopo-address-autocomplete__status:empty{display:none}
+.koopo-address-autocomplete__list{position:absolute;top:100%;left:0;right:0;z-index:1000;max-height:19rem;overflow:auto;margin:.3rem 0 0;padding:.35rem;background:#fff;border:1px solid #d8deeb;border-radius:.7rem;box-shadow:0 12px 30px rgba(25,38,73,.14);list-style:none}
+.koopo-address-autocomplete__list[hidden],.koopo-address-autocomplete__attribution[hidden]{display:none}
+.koopo-address-autocomplete__list [role=option]{padding:.68rem .75rem;border-radius:.45rem;color:#1b2340;cursor:pointer;line-height:1.35}
+.koopo-address-autocomplete__list [role=option]:hover,.koopo-address-autocomplete__list [role=option]:focus{outline:0;background:#f1f4fb;color:#1d3b80}
+.koopo-address-autocomplete__attribution{padding:.25rem .65rem .2rem;text-align:right;color:#69738a;font-size:.72rem}
+.koopo-address-autocomplete__attribution a{color:inherit;text-decoration:underline;text-underline-offset:2px}

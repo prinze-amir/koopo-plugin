@@ -21,7 +21,7 @@ foreach ( $order_items as $item_id => $item ) {
 echo '<table class="kod-extension-table"><tbody>'; do_action( 'woocommerce_order_details_before_order_table_items', $order ); echo '</tbody></table>';
 foreach ( $groups as $group ) : ?>
 <section class="kod-panel kod-group kod-group--<?php echo esc_attr( $group['kind'] ); ?>">
-    <header class="kod-group-heading"><h2><?php echo esc_html( array( 'membership' => __( 'Your membership', 'koopo' ), 'site_plan' => __( 'Your site plan', 'koopo' ), 'subscription' => __( 'Your subscription', 'koopo' ), 'product' => __( 'Items by seller', 'koopo' ), 'ticket' => __( 'Event tickets', 'koopo' ), 'booking' => __( 'Appointment details', 'koopo' ), 'support' => __( 'Your support', 'koopo' ) )[ $group['kind'] ] ); ?></h2>
+    <header class="kod-group-heading"><h2><?php echo esc_html( array( 'membership' => __( 'Your membership', 'koopo' ), 'site_plan' => __( 'Your site plan', 'koopo' ), 'subscription' => __( 'Your subscription', 'koopo' ), 'product' => __( 'Items by seller', 'koopo' ), 'ticket' => __( 'Event tickets', 'koopo' ), 'booking' => __( 'Appointment details', 'koopo' ), 'support' => __( 'Your Koopo Love', 'koopo' ) )[ $group['kind'] ] ); ?></h2>
     <?php if ( 'product' === $group['kind'] && $group['seller'] && function_exists( 'dokan' ) ) { $vendor = dokan()->vendor->get( $group['seller'] ); if ( $vendor && $vendor->get_id() ) Koopo_Order_Details::action( $vendor->get_shop_url(), $vendor->get_shop_name() ); } ?></header>
     <?php foreach ( $group['items'] as $item_id => $item ) Koopo_Order_Details::context( $item, $order ); ?>
     <table class="woocommerce-table woocommerce-table--order-details shop_table order_details kod-items"><thead><tr><th><?php esc_html_e( 'Item', 'koopo' ); ?></th><th><?php esc_html_e( 'Total', 'koopo' ); ?></th></tr></thead><tbody>
@@ -35,8 +35,11 @@ foreach ( $groups as $group ) : ?>
         $vendor_priority = has_action( 'woocommerce_order_item_meta_start', 'dokan_attach_vendor_name' );
         $hide_vendor = in_array( Koopo_Order_Details::kind( $item ), array( 'site_plan', 'membership' ), true );
         if ( $hide_vendor && false !== $vendor_priority ) remove_action( 'woocommerce_order_item_meta_start', 'dokan_attach_vendor_name', $vendor_priority );
+        $hide_booking_meta = 'booking' === Koopo_Order_Details::kind( $item );
+        if ( $hide_booking_meta ) add_filter( 'woocommerce_hidden_order_itemmeta', array( 'Koopo_Order_Details', 'booking_meta_keys' ) );
+        if ( $hide_booking_meta ) add_filter( 'woocommerce_order_item_get_formatted_meta_data', array( 'Koopo_Order_Details', 'booking_formatted_meta' ), 10, 2 );
         try { include WC_ABSPATH . 'templates/order/order-details-item.php'; }
-        finally { if ( $hide_vendor && false !== $vendor_priority ) add_action( 'woocommerce_order_item_meta_start', 'dokan_attach_vendor_name', $vendor_priority, 2 ); remove_filter( 'woocommerce_order_item_name', $thumbnail, 20 ); }
+        finally { if ( $hide_booking_meta ) { remove_filter( 'woocommerce_hidden_order_itemmeta', array( 'Koopo_Order_Details', 'booking_meta_keys' ) ); remove_filter( 'woocommerce_order_item_get_formatted_meta_data', array( 'Koopo_Order_Details', 'booking_formatted_meta' ), 10 ); } if ( $hide_vendor && false !== $vendor_priority ) add_action( 'woocommerce_order_item_meta_start', 'dokan_attach_vendor_name', $vendor_priority, 2 ); remove_filter( 'woocommerce_order_item_name', $thumbnail, 20 ); }
     } ?>
     </tbody></table>
 </section>

@@ -49,6 +49,9 @@ class Koopo_Creator_Support_Service {
         add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'persist_order_line_item_meta' ), 10, 4 );
         add_filter( 'woocommerce_product_get_image', array( $this, 'filter_product_image' ), 10, 6 );
         add_filter( 'woocommerce_cart_item_thumbnail', array( $this, 'filter_cart_item_thumbnail' ), 10, 3 );
+        add_filter( 'woocommerce_order_item_name', array( $this, 'order_item_name' ), 10, 2 );
+        add_action( 'woocommerce_order_item_meta_end', array( $this, 'order_item_details' ), 10, 4 );
+        add_action( 'woocommerce_after_order_itemmeta', array( $this, 'admin_order_item_details' ), 10, 2 );
     }
 
     public function creator_support_access_state( $creator_id ) {
@@ -334,7 +337,7 @@ class Koopo_Creator_Support_Service {
     }
 
     public function persist_order_line_item_meta( $item, $cart_item_key, $values, $order ) {
-        unset( $cart_item_key, $order );
+        unset( $cart_item_key );
 
         if ( ! is_object( $item ) || empty( $values[ self::CART_ITEM_FLAG ] ) ) {
             return;
@@ -347,6 +350,12 @@ class Koopo_Creator_Support_Service {
         $context_id   = isset( $values[ self::CART_ITEM_CONTEXT_ID ] ) ? absint( (int) $values[ self::CART_ITEM_CONTEXT_ID ] ) : 0;
         $context_type = isset( $values[ self::CART_ITEM_CONTEXT_TYPE ] ) ? sanitize_key( (string) $values[ self::CART_ITEM_CONTEXT_TYPE ] ) : '';
 
+        $item->set_name( __( 'Koopo Love', 'koopo' ) );
+        $item->add_meta_data( '_koopo_support_sender_id', $order ? $order->get_customer_id() : 0, true );
+        if ( $context_id && get_post_type( $context_id ) ) {
+            $context_type = get_post_type( $context_id );
+            $item->add_meta_data( '_koopo_support_source_title', get_the_title( $context_id ), true );
+        }
         $item->add_meta_data( self::ORDER_ITEM_META_FLAG, '1', true );
         $item->add_meta_data( self::ORDER_ITEM_META_CREATOR_ID, $creator_id, true );
         $item->add_meta_data( self::ORDER_ITEM_META_AMOUNT, wc_format_decimal( $amount, $this->price_decimals() ), true );
@@ -354,6 +363,41 @@ class Koopo_Creator_Support_Service {
         $item->add_meta_data( self::ORDER_ITEM_META_SURFACE, $surface, true );
         $item->add_meta_data( self::ORDER_ITEM_META_CONTEXT_ID, $context_id, true );
         $item->add_meta_data( self::ORDER_ITEM_META_CONTEXT_TYPE, $context_type, true );
+    }
+
+    public function order_item_name( $name, $item ) {
+        return $item->get_meta( self::ORDER_ITEM_META_FLAG ) || $item->get_meta( self::LEGACY_VIDEO_ORDER_ITEM_FLAG ) ? esc_html__( 'Koopo Love', 'koopo' ) : $name;
+    }
+
+    public function admin_order_item_details( $item_id, $item ) {
+        if ( ! method_exists( $item, 'get_order' ) ) { return; }
+        $this->order_item_details( $item_id, $item, $item->get_order(), false );
+    }
+
+    /** Use saved attribution, never the currently signed-in viewer. */
+    public function order_item_details( $item_id, $item, $order, $plain_text = false ) {
+        if ( ! $item->get_meta( self::ORDER_ITEM_META_FLAG ) && ! $item->get_meta( self::LEGACY_VIDEO_ORDER_ITEM_FLAG ) ) { return; }
+        $sender_id = absint( $item->get_meta( '_koopo_support_sender_id' ) ) ?: ( $order ? $order->get_customer_id() : 0 );
+        $sender = $sender_id ? get_userdata( $sender_id ) : false;
+        $name = $sender ? $sender->display_name : __( 'Guest', 'koopo' );
+        $profile = $sender ? ( function_exists( 'bp_core_get_user_domain' ) ? bp_core_get_user_domain( $sender_id ) : get_author_posts_url( $sender_id ) ) : '';
+        $context_id = absint( $item->get_meta( self::ORDER_ITEM_META_CONTEXT_ID ) );
+        $type = (string) $item->get_meta( self::ORDER_ITEM_META_CONTEXT_TYPE );
+        $label = array( 'koopo_video' => __( 'Video', 'koopo' ), 'post' => __( 'Blog article', 'koopo' ), 'buddyblog' => __( 'Blog article', 'koopo' ) )[ $type ] ?? __( 'Post', 'koopo' );
+        $available = $context_id && get_post_type( $context_id ) === $type && is_post_publicly_viewable( $context_id );
+        $title = $available ? get_the_title( $context_id ) : (string) $item->get_meta( '_koopo_support_source_title' );
+        $source = $context_id ? $label . ' · ' . ( $title ?: __( 'Content unavailable', 'koopo' ) ) : __( 'Creator profile / direct Koopo Love', 'koopo' );
+        if ( $plain_text ) {
+            echo "\n" . esc_html( sprintf( __( 'Koopo Love from %s', 'koopo' ), $name ) ) . "\n" . esc_html( $source ) . "\n";
+            return;
+        }
+        echo '<div class="koopo-love-attribution" style="margin:12px 0"><div style="display:flex;align-items:center;gap:10px">';
+        if ( $profile ) echo '<a href="' . esc_url( $profile ) . '">' . get_avatar( $sender_id, 40 ) . '</a>';
+        echo '<span>' . esc_html__( 'Koopo Love from', 'koopo' ) . ' ';
+        echo $profile ? '<a href="' . esc_url( $profile ) . '">' . esc_html( $name ) . '</a>' : esc_html( $name );
+        echo '</span></div><div style="margin-top:8px"><strong>' . esc_html__( 'Source:', 'koopo' ) . '</strong> ';
+        echo $available ? '<a href="' . esc_url( get_permalink( $context_id ) ) . '">' . esc_html( $source ) . '</a>' : esc_html( $source );
+        echo '</div></div>';
     }
 
     public function filter_product_image( $image, $product, $size = 'woocommerce_thumbnail', $attr = array(), $placeholder = true, $image_id = 0 ) {

@@ -804,6 +804,7 @@ if ( ! class_exists( 'Koopo_Account_Settings_Rest' ) ) {
                     'post_type'      => 'product',
                     'post_status'    => 'publish',
                     'posts_per_page' => 100,
+                    'post__not_in'   => koopo_hidden_subscription_pack_ids(),
                     'fields'         => 'ids',
                     'orderby'        => 'menu_order title',
                     'order'          => 'ASC',
