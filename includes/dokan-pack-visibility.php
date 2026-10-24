@@ -8,7 +8,7 @@ function koopo_hidden_subscription_pack_ids() {
 
 function koopo_subscription_pack_visibility_args( $args ) {
     // Admin assignment uses the same legacy query. REST requests use frontend rules.
-    if ( is_admin() && ! wp_doing_ajax() && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+    if ( is_admin() && ( ! wp_doing_ajax() || current_user_can( 'manage_options' ) ) && ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
         return $args;
     }
     $args['post__not_in'] = array_values( array_unique( array_merge(
